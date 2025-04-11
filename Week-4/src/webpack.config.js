@@ -36,7 +36,8 @@ export default {
       patterns: [
         { from: "manifest.json", to: "." },
         { from: "*.html", to: "." },
-        { from: "src/icons/icon48.png", to: "icon48.png" }
+        { from: "src/icons/icon48.png", to: "icon48.png" },
+        { from: "src/icons/icon48.png", to: "dist/icon48.png" }
       ],
     }),
   ],

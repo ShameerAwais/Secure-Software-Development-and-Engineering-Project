@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>No Phish</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 16px;
+      color: #333;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+
+    .result-container {
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .scanning {
+      background-color: #e3f2fd;
+      color: #1976d2;
+    }
+
+    .safe {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .danger {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+
+    .warning {
+      background-color: #fff3e0;
+      color: #ef6c00;
+    }
+
+    #settings {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    #settingsBtn {
+      background: none;
+      border: 1px solid #ddd;
+      color: #666;
+      padding: 8px 16px;
+      width: auto;
+      margin: 0;
+    }
+
+    #settingsBtn:hover {
+      background-color: #f5f5f5;
+    }
+
+    .version {
+      color: #999;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>No Phish</h1>
+  <button id="scanBtn">Scan Current Page</button>
+  <div id="result" class="result-container"></div>
+  <div id="settings">
+    <button id="settingsBtn">Settings</button>
+    <span class="version">v1.0</span>
+  </div>
+  <script src="popup.bundle.js"></script>
+</body>
+</html> 

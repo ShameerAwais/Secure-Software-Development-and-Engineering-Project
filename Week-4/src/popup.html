@@ -1,62 +1,175 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Anti-Phishing Extension</title>
+  <title>No Phish</title>
   <style>
+    :root {
+      --primary-color: #4CAF50;
+      --danger-color: #f44336;
+      --warning-color: #ff9800;
+      --safe-color: #4CAF50;
+      --background-color: #ffffff;
+      --text-color: #333333;
+      --border-color: #e0e0e0;
+    }
+
     body {
-      width: 300px;
-      padding: 15px;
-      font-family: Arial, sans-serif;
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--background-color);
+      color: var(--text-color);
     }
-    .container {
+
+    .header {
       display: flex;
-      flex-direction: column;
-      gap: 10px;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
     }
-    button {
-      padding: 8px;
-      background-color: #4CAF50;
+
+    .header img {
+      width: 32px;
+      height: 32px;
+      margin-right: 12px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .scan-section {
+      margin-bottom: 20px;
+    }
+
+    .scan-button {
+      width: 100%;
+      padding: 12px 20px;
+      background-color: var(--primary-color);
       color: white;
       border: none;
-      border-radius: 4px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
       cursor: pointer;
+      transition: background-color 0.2s;
     }
-    button:hover {
+
+    .scan-button:hover {
       background-color: #45a049;
     }
-    #result {
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 4px;
+
+    .scan-button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
     }
-    .safe {
-      background-color: #dff0d8;
-      color: #3c763d;
+
+    .result-container {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      text-align: center;
     }
-    .danger {
-      background-color: #f2dede;
-      color: #a94442;
+
+    .result-container.scanning {
+      background-color: #f5f5f5;
+      color: #666;
     }
-    #alerts {
-      margin-top: 10px;
+
+    .result-container.safe {
+      background-color: #e8f5e9;
+      color: var(--safe-color);
     }
+
+    .result-container.danger {
+      background-color: #ffebee;
+      color: var(--danger-color);
+    }
+
+    .result-container.warning {
+      background-color: #fff3e0;
+      color: var(--warning-color);
+    }
+
+    .alerts-section {
+      margin-top: 20px;
+    }
+
     .alert-box {
-      padding: 10px;
-      background-color: #fff3cd;
-      color: #856404;
+      padding: 12px;
+      margin-bottom: 8px;
+      background-color: #fff3e0;
+      border-left: 4px solid var(--warning-color);
       border-radius: 4px;
-      margin-bottom: 10px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .alert-box .alert-title {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .alert-box .alert-message {
+      color: #666;
+    }
+
+    .footer {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .settings-button {
+      padding: 8px 16px;
+      background-color: transparent;
+      color: var(--primary-color);
+      border: 1px solid var(--primary-color);
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .settings-button:hover {
+      background-color: var(--primary-color);
+      color: white;
+    }
+
+    .version {
+      font-size: 12px;
+      color: #999;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>Website Security Check</h2>
-    <button id="scanBtn">🔍 Scan Current Page</button>
-    <div id="result"></div>
-    <div id="alerts"></div>
-    <button id="settingsBtn">⚙️ Settings</button>
+  <div class="header">
+    <img src="icon48.png" alt="Extension Icon">
+    <h1>No Phish</h1>
   </div>
+
+  <div class="scan-section">
+    <button id="scanBtn" class="scan-button">Scan Current Page</button>
+    <div id="result" class="result-container"></div>
+  </div>
+
+  <div class="alerts-section">
+    <div id="alerts"></div>
+  </div>
+
+  <div class="footer">
+    <button id="settingsBtn" class="settings-button">Settings</button>
+    <span class="version">v1.0</span>
+  </div>
+
   <script src="popup.bundle.js"></script>
 </body>
 </html>

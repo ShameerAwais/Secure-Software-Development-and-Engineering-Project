@@ -14,7 +14,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.lastPhishingUrl) {
       const alert = document.createElement('div');
       alert.className = 'alert-box';
-      alert.textContent = `⚠️ Recent phishing attempt blocked: ${data.lastPhishingUrl}`;
+      
+      const title = document.createElement('div');
+      title.className = 'alert-title';
+      title.textContent = 'Recent Phishing Attempt';
+      
+      const message = document.createElement('div');
+      message.className = 'alert-message';
+      message.textContent = 'A phishing attempt was blocked on this page';
+      
+      alert.appendChild(title);
+      alert.appendChild(message);
       alertsDiv.appendChild(alert);
     }
   });
@@ -23,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   scanButton.addEventListener('click', async () => {
     // Show loading state
     resultDiv.textContent = 'Scanning current page...';
-    resultDiv.className = 'scanning';
+    resultDiv.className = 'result-container scanning';
     scanButton.disabled = true;
 
     try {
@@ -43,31 +53,31 @@ document.addEventListener('DOMContentLoaded', () => {
           const result = response.result.toString().trim();
           
           if (result.includes('Please enable user consent')) {
-            resultDiv.textContent = '⚠️ Please enable user consent in settings first';
-            resultDiv.className = 'warning';
+            resultDiv.textContent = 'Please enable user consent in settings first';
+            resultDiv.className = 'result-container warning';
           } else if (result.includes('Phishing site detected')) {
-            resultDiv.textContent = '❌ Phishing site detected!';
-            resultDiv.className = 'danger';
+            resultDiv.textContent = 'Phishing site detected';
+            resultDiv.className = 'result-container danger';
           } else if (result.includes('Safe site')) {
-            resultDiv.textContent = '✅ Safe site';
-            resultDiv.className = 'safe';
+            resultDiv.textContent = 'Safe site';
+            resultDiv.className = 'result-container safe';
           } else if (result.includes('Error')) {
-            resultDiv.textContent = '❌ Error: ' + result.replace('Error:', '').trim();
-            resultDiv.className = 'danger';
+            resultDiv.textContent = 'Error: ' + result.replace('Error:', '').trim();
+            resultDiv.className = 'result-container danger';
           } else {
-            resultDiv.textContent = '❌ Error: Invalid response format';
-            resultDiv.className = 'danger';
+            resultDiv.textContent = 'Error: Invalid response format';
+            resultDiv.className = 'result-container danger';
           }
         } else {
-          resultDiv.textContent = '❌ Error checking URL';
-          resultDiv.className = 'danger';
+          resultDiv.textContent = 'Error checking URL';
+          resultDiv.className = 'result-container danger';
         }
         scanButton.disabled = false;
       });
     } catch (error) {
       console.error('Error:', error);
-      resultDiv.textContent = '❌ Error: ' + error.message;
-      resultDiv.className = 'danger';
+      resultDiv.textContent = 'Error: ' + error.message;
+      resultDiv.className = 'result-container danger';
       scanButton.disabled = false;
     }
   });

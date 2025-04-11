@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Secure Anti-Phishing Extension",
+  "name": "No Phish",
   "description": "Detect phishing websites in real-time using ML and secure architecture",
   "version": "1.0",
   "author": "Your Name",

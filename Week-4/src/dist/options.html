@@ -1,98 +1,193 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Extension Settings</title>
+  <title>No Phish Settings</title>
   <style>
+    :root {
+      --primary-color: #4CAF50;
+      --danger-color: #f44336;
+      --warning-color: #ff9800;
+      --background-color: #f5f5f5;
+      --card-background: #ffffff;
+      --text-color: #333333;
+      --border-color: #e0e0e0;
+    }
+
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       max-width: 800px;
       margin: 0 auto;
       padding: 20px;
-      background-color: #f5f5f5;
+      background-color: var(--background-color);
+      color: var(--text-color);
     }
+
     .settings-container {
-      background-color: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      background-color: var(--card-background);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    h2 {
-      color: #333;
-      margin-bottom: 20px;
+
+    .header {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
     }
-    .setting-group {
-      margin-bottom: 20px;
-      padding: 15px;
-      border: 1px solid #e0e0e0;
-      border-radius: 4px;
+
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-color);
     }
-    label {
-      display: block;
-      margin-bottom: 15px;
+
+    .header p {
+      margin: 8px 0 0;
+      color: #666;
       font-size: 14px;
+    }
+
+    .setting-group {
+      margin-bottom: 24px;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .setting-group h3 {
+      margin: 0 0 16px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-color);
+    }
+
+    .setting-item {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 16px;
+      padding: 12px;
+      background-color: white;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .setting-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .setting-item input[type="checkbox"] {
+      margin-right: 12px;
+      margin-top: 3px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .setting-item label {
+      flex: 1;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #444;
+      cursor: pointer;
+    }
+
+    .setting-item .description {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
       color: #666;
     }
-    input[type="checkbox"] {
-      margin-right: 10px;
-    }
-    button {
-      background-color: #4CAF50;
+
+    .save-button {
+      display: block;
+      width: 100%;
+      padding: 12px 24px;
+      background-color: var(--primary-color);
       color: white;
-      padding: 10px 20px;
       border: none;
-      border-radius: 4px;
-      cursor: pointer;
+      border-radius: 6px;
       font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
     }
-    button:hover {
+
+    .save-button:hover {
       background-color: #45a049;
     }
+
     #status {
-      margin-top: 15px;
-      padding: 10px;
-      border-radius: 4px;
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      text-align: center;
       display: none;
     }
+
     .success {
-      background-color: #dff0d8;
-      color: #3c763d;
+      background-color: #e8f5e9;
+      color: var(--primary-color);
+      display: block !important;
+    }
+
+    .error {
+      background-color: #ffebee;
+      color: var(--danger-color);
       display: block !important;
     }
   </style>
 </head>
 <body>
   <div class="settings-container">
-    <h2>Extension Settings</h2>
+    <div class="header">
+      <h1>No Phish Settings</h1>
+      <p>Configure your anti-phishing protection preferences</p>
+    </div>
     
     <div class="setting-group">
       <h3>Privacy Settings</h3>
-      <label>
+      <div class="setting-item">
         <input type="checkbox" id="consentCheckbox">
-        I agree to allow this extension to collect non-personal data for phishing detection improvement
-      </label>
+        <label>
+          I agree to allow this extension to collect non-personal data for phishing detection improvement
+          <span class="description">This helps improve the accuracy of our phishing detection system</span>
+        </label>
+      </div>
     </div>
 
     <div class="setting-group">
       <h3>Detection Settings</h3>
-      <label>
+      <div class="setting-item">
         <input type="checkbox" id="enableMLCheckbox" checked>
-        Enable Machine Learning detection
-      </label>
-      <label>
+        <label>
+          Enable Machine Learning detection
+          <span class="description">Uses advanced ML algorithms to detect phishing patterns</span>
+        </label>
+      </div>
+      <div class="setting-item">
         <input type="checkbox" id="enableRealtimeCheckbox" checked>
-        Enable real-time protection
-      </label>
+        <label>
+          Enable real-time protection
+          <span class="description">Continuously monitors web pages for phishing attempts</span>
+        </label>
+      </div>
     </div>
 
     <div class="setting-group">
       <h3>Notification Settings</h3>
-      <label>
+      <div class="setting-item">
         <input type="checkbox" id="enableNotificationsCheckbox" checked>
-        Show desktop notifications for detected threats
-      </label>
+        <label>
+          Show desktop notifications for detected threats
+          <span class="description">Get immediate alerts when phishing sites are detected</span>
+        </label>
+      </div>
     </div>
 
-    <button id="saveBtn">💾 Save Settings</button>
+    <button id="saveBtn" class="save-button">Save Settings</button>
     <div id="status"></div>
   </div>
 

@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
         chrome.storage.sync.set(newSettings, () => {
             // Show success message
-            status.textContent = '✅ Settings saved successfully!';
+            status.textContent = 'Settings saved successfully';
             status.classList.add('success');
   
             // Notify background script of settings change
