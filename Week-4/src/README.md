@@ -4,11 +4,13 @@ A browser extension that helps protect users from phishing websites using machin
 
 ## Features
 
-- Real-time phishing detection
-- Machine learning-based URL analysis
-- Secure API communication
+- Real-time phishing detection using ML algorithms
+- Secure API communication with rate limiting
 - User consent-based data collection
 - Configurable protection settings
+- Desktop notifications for detected threats
+- Badge indicators for suspicious sites
+- Whitelist support for trusted domains
 
 ## Development Setup
 
@@ -38,15 +40,42 @@ npm run dev
 
 ```
 src/
-├── components/     # Reusable UI components
-├── services/      # Core services (ML, API, etc.)
-├── utils/         # Utility functions
-├── styles/        # CSS styles
-├── background.js  # Background service worker
-├── popup.js       # Popup UI logic
-├── content.js     # Content script
-└── options.js     # Options page logic
+├── background.js      # Background service worker for URL monitoring
+├── content.js         # Content script for inline warnings
+├── mlEngine.js        # Machine learning engine for phishing detection
+├── options.js         # Options page logic
+├── popup.js           # Popup UI logic
+├── secureApi.js       # Secure API communication
+├── urlChecker.js      # URL checking service
+├── icons/             # Extension icons
+│   └── icon48.png
+├── popup.html         # Popup UI
+└── options.html       # Options page UI
 ```
+
+## Core Components
+
+### ML Engine (`mlEngine.js`)
+- Implements phishing detection patterns
+- Checks for suspicious subdomains, IP addresses, and TLDs
+- Analyzes URL structure and keywords
+
+### URL Checker (`urlChecker.js`)
+- Validates URLs
+- Integrates with ML engine for phishing detection
+- Handles error cases and logging
+
+### Secure API (`secureApi.js`)
+- Manages client authentication
+- Implements rate limiting
+- Handles secure logging
+- Manages session tokens
+
+### Background Service (`background.js`)
+- Monitors web navigation
+- Manages extension state
+- Handles notifications and badges
+- Implements whitelist functionality
 
 ## Development Workflow
 
@@ -55,6 +84,15 @@ src/
 3. Run `npm test` to run tests
 4. Build the extension with `npm run build`
 5. Load the extension in your browser to test
+
+## Security Features
+
+- Secure session management
+- Rate limiting to prevent abuse
+- User consent for data collection
+- Encrypted logging
+- Whitelist for trusted domains
+- Secure API communication
 
 ## Contributing
 
