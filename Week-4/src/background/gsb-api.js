@@ -3,6 +3,8 @@ import { SAFE_BROWSING_API_URL, THREAT_TYPES, PLATFORM_TYPES } from '../common/c
 import { GSB_CONFIG } from '../utils/config.js';
 import * as logger from '../utils/logger.js';
 import { normalizeUrl } from '../utils/url-validator.js';
+import * as secureStorage from '../utils/secure-storage.js';
+import { getApiKey } from './key-installer.js';
 
 const MODULE_NAME = 'GSB-API';
 
@@ -24,11 +26,21 @@ export const checkUrl = async (url) => {
   
   try {
     const apiUrl = new URL(SAFE_BROWSING_API_URL);
+    
+    // Get API key from secure storage
+    let apiKey = await getApiKey();
+    
+    // Fall back to config if not found in secure storage
+    if (!apiKey) {
+      logger.warn(MODULE_NAME, 'Using fallback API key from config');
+      apiKey = GSB_CONFIG.apiKey;
+    }
+    
     // Append API key as query parameter
-    apiUrl.searchParams.append('key', GSB_CONFIG.apiKey);
+    apiUrl.searchParams.append('key', apiKey);
     
     logger.debug(MODULE_NAME, 'Making GSB API request', {
-      url: apiUrl.toString(),
+      url: apiUrl.toString().replace(apiKey, '***API_KEY_REDACTED***'),
       method: 'POST',
       bodyLength: JSON.stringify(requestBody).length
     });

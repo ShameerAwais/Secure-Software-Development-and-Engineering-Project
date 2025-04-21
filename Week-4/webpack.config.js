@@ -2,6 +2,11 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
 const WebpackObfuscator = require('webpack-obfuscator');
+const webpack = require('webpack');
+const dotenv = require('dotenv');
+
+// Load env variables from .env file
+const env = dotenv.config().parsed || {};
 
 module.exports = {
   mode: 'production',
@@ -40,11 +45,14 @@ module.exports = {
           options: {
             presets: [
               ['@babel/preset-env', {
-                modules: false,
                 targets: {
                   chrome: '80'
-                }
+                },
+                modules: 'commonjs' // Transform ES modules to CommonJS
               }]
+            ],
+            plugins: [
+              '@babel/plugin-transform-modules-commonjs'
             ]
           }
         }
@@ -71,6 +79,11 @@ module.exports = {
     ],
   },
   plugins: [
+    // Define environment variables
+    new webpack.DefinePlugin({
+      'process.env.GSB_API_KEY': JSON.stringify(env.GSB_API_KEY || 'KEY_PLACEHOLDER'),
+    }),
+    
     // Apply obfuscation as a plugin
     new WebpackObfuscator({
       rotateStringArray: true,

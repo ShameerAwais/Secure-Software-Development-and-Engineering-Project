@@ -1,13 +1,13 @@
 // Configuration for the extension
-// IMPORTANT: Replace 'YOUR_API_KEY_HERE' with your actual Google Safe Browsing API Key
-// Get one from: https://developers.google.com/safe-browsing/v4/get-started
 
 /**
  * Google Safe Browsing API configuration
+ * The API key is not hardcoded here for security reasons.
+ * It is fetched from secure storage at runtime.
  */
 export const GSB_CONFIG = {
-  apiKey: 'AIzaSyD-ar66lj3OxdGOOOVjSB2RlJpot7cpVy4',
-  clientId: 'anti-phishing-extension',
+  apiKey: 'KEY_PLACEHOLDER', // Will be securely replaced during the build process
+  clientId: 'anti-phishing-extension', // Separated from the API key with proper syntax
   clientVersion: '1.0.0'
 };
 

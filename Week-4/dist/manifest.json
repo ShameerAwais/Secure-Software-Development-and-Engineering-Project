@@ -56,6 +56,6 @@
     "open_in_tab": true
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; default-src 'self'"
+    "extension_pages": "default-src 'self'; img-src 'self' data:; connect-src 'self' https://safebrowsing.googleapis.com"
   }
 }

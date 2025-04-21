@@ -8,6 +8,7 @@ import {
   markAsUnsafe, 
   markAsError 
 } from './status-manager.js';
+import { installApiKey } from './key-installer.js';
 import * as logger from '../utils/logger.js';
 import { isValidUrl } from '../utils/url-validator.js';
 import * as secureStorage from '../utils/secure-storage.js';
@@ -31,6 +32,35 @@ async function performSecurityChecks() {
     // Clear any previous integrity issues
     await secureStorage.secureRemove('integrity_issues');
   }
+  
+  // Ensure API key is securely stored
+  await initializeApiKey();
+}
+
+// Initialize API key in secure storage if needed
+async function initializeApiKey() {
+  try {
+    // Check if API key is already in secure storage
+    const storedKey = await secureStorage.secureGet('gsb_api_key');
+    
+    if (!storedKey || storedKey === 'KEY_PLACEHOLDER') {
+      logger.info(MODULE_NAME, 'API key not found in secure storage, initializing...');
+      // Install API key from the installer
+      await installApiKey();
+      
+      // Verify the key was set correctly
+      const verifiedKey = await secureStorage.secureGet('gsb_api_key');
+      if (!verifiedKey || verifiedKey === 'KEY_PLACEHOLDER') {
+        logger.error(MODULE_NAME, 'Failed to initialize API key');
+      } else {
+        logger.info(MODULE_NAME, 'API key successfully initialized');
+      }
+    } else {
+      logger.info(MODULE_NAME, 'API key already exists in secure storage');
+    }
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Error initializing API key', error);
+  }
 }
 
 // Listen for extension install or update
@@ -41,10 +71,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // Initialize security measures on install
     await integrityChecker.storeIntegrityState();
     logger.info(MODULE_NAME, 'Initial integrity state stored');
+    
+    // Install the API key on first install
+    await installApiKey();
+    logger.info(MODULE_NAME, 'API key installed on first install');
   } else if (details.reason === 'update') {
     // Reset integrity state after update as files have changed
     await integrityChecker.resetIntegrityState();
     logger.info(MODULE_NAME, 'Integrity state reset after update');
+    
+    // Refresh the API key on update
+    await installApiKey();
+    logger.info(MODULE_NAME, 'API key refreshed on update');
   }
   
   // Perform initial security checks
