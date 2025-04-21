@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Anti-Phishing Status</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Site Safety Status</h1>
+        </header>
+        
+        <main>
+            <div id="status-area" class="idle">
+                <div id="status-icon"></div>
+                <p id="status-text">Ready to scan</p>
+                <div id="checked-url">
+                    <span>Current URL</span>
+                    <span id="url-span">N/A</span>
+                </div>
+            </div>
+            
+            <div class="button-area">
+                <button id="scanButton" class="primary-btn">Scan Current Page</button>
+                <button id="settingsButton" class="secondary-btn"></button>
+            </div>
+        </main>
+        
+        <footer>
+            <p class="footer">Anti-Phishing Guard v1.0</p>
+        </footer>
+    </div>
+    <script src="popup.js" type="module"></script>
+</body>
+</html>

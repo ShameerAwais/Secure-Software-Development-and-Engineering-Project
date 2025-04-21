@@ -1,0 +1,30 @@
+{
+  "name": "anti-phishing-extension",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack --config webpack.config.js",
+    "watch": "webpack --config webpack.config.js --watch",
+    "dev": "webpack --config webpack.config.js --mode=development --watch",
+    "clean": "rm -rf dist/",
+    "build:obfuscate": "node build.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@babel/core": "^7.26.10",
+    "@babel/preset-env": "^7.26.9",
+    "babel-loader": "^10.0.0",
+    "copy-webpack-plugin": "^13.0.0",
+    "html-webpack-plugin": "^5.6.3",
+    "javascript-obfuscator": "^4.1.1",
+    "terser-webpack-plugin": "^5.3.14",
+    "webpack": "^5.99.6",
+    "webpack-cli": "^6.0.1",
+    "webpack-obfuscator": "^3.5.1"
+  }
+}
