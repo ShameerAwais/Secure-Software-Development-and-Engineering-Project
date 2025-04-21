@@ -17,6 +17,7 @@ A browser extension that helps protect users from phishing websites using machin
 npm install
 ```
 
+
 2. Build the extension:
 ```bash
 npm run build
@@ -34,18 +35,18 @@ npm run dev
 - Click "Load unpacked"
 - Select the `dist` directory
 
+
 ## Project Structure
 
 ```
 src/
-├── components/     # Reusable UI components
-├── services/      # Core services (ML, API, etc.)
-├── utils/         # Utility functions
-├── styles/        # CSS styles
-├── background.js  # Background service worker
-├── popup.js       # Popup UI logic
-├── content.js     # Content script
-└── options.js     # Options page logic
+├── background/     # Background scripts for extension functionality
+├── block_page/     # UI for blocked page display
+├── common/         # Shared utilities and constants
+├── content/        # Content scripts that run in web pages
+├── popup/          # Extension popup interface
+├── settings/       # Settings page interface
+└── utils/          # Utility functions for security and validation
 ```
 
 ## Development Workflow
@@ -66,4 +67,4 @@ src/
 
 ## License
 
-MIT 
+MIT
