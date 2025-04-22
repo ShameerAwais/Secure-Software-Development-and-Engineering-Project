@@ -4,9 +4,18 @@ const TerserPlugin = require('terser-webpack-plugin');
 const WebpackObfuscator = require('webpack-obfuscator');
 const webpack = require('webpack');
 const dotenv = require('dotenv');
+const fs = require('fs');
 
 // Load env variables from .env file
 const env = dotenv.config().parsed || {};
+
+// Validate API key
+const apiKey = env.GSB_API_KEY;
+if (!apiKey || apiKey === 'KEY_PLACEHOLDER') {
+  console.error('❌ ERROR: No valid API key found in .env file!');
+  console.error('❌ Make sure you have a valid GSB_API_KEY in your .env file');
+  process.exit(1); // Exit with error
+}
 
 module.exports = {
   mode: 'production',
@@ -29,7 +38,9 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: '[name].js',
-    clean: true,
+    clean: {
+      keep: /background\/key-installer\.js/, // Keep our manually created key-installer.js
+    },
   },
   // Fix module configuration
   experiments: {
@@ -79,10 +90,26 @@ module.exports = {
     ],
   },
   plugins: [
-    // Define environment variables
+    // Replace API key placeholder in key-installer.js
     new webpack.DefinePlugin({
       'process.env.GSB_API_KEY': JSON.stringify(env.GSB_API_KEY || 'KEY_PLACEHOLDER'),
     }),
+    
+    // String replacements - better approach for injecting API key
+    new webpack.NormalModuleReplacementPlugin(
+      /src\/background\/key-installer\.js/,
+      (resource) => {
+        // This will run for the key-installer.js file
+        resource.loaders = [{
+          loader: 'string-replace-loader',
+          options: {
+            search: /const apiKey = ['"]KEY_PLACEHOLDER['"]/g,
+            replace: `const apiKey = '${apiKey.replace(/'/g, "\\'")}'`,
+            flags: 'g'
+          }
+        }];
+      }
+    ),
     
     // Apply obfuscation as a plugin
     new WebpackObfuscator({

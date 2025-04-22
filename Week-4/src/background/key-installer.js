@@ -10,9 +10,9 @@ const MODULE_NAME = 'KeyInstaller';
  */
 export const installApiKey = async () => {
   try {
-    // In production, this value is replaced during build by the value from .env
-    // If you're seeing the placeholder in production, check your build process
-    const apiKey = process.env.GSB_API_KEY || 'KEY_PLACEHOLDER';
+    // In production, this value is replaced during build
+    // Use a string literal to avoid reference errors in browser context
+    const apiKey = 'KEY_PLACEHOLDER';
     
     if (apiKey === 'KEY_PLACEHOLDER') {
       logger.error(MODULE_NAME, 'Production API key not injected during build process');

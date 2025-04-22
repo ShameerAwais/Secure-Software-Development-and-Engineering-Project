@@ -225,7 +225,8 @@ const createKeyInstaller = (apiKey) => {
   
   console.log(`🔑 Using API Key: ${safeApiKey.substring(0, 5)}... (${safeApiKey.length} characters)`);
   
-  // Create the installer script that directly exposes the API key
+  // Create the installer script that directly includes the API key as a hardcoded value
+  // This eliminates any reference to process.env in the browser context
   const directScript = `
   import * as secureStorage from '../utils/secure-storage.js';
   import * as logger from '../utils/logger.js';
@@ -238,7 +239,7 @@ const createKeyInstaller = (apiKey) => {
    */
   export const installApiKey = async () => {
     try {
-      // API key directly injected by build process - no placeholder
+      // API key directly injected by build process - no reference to process.env
       const apiKey = '${safeApiKey}';
       
       if (apiKey === 'KEY_PLACEHOLDER') {
