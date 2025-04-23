@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Safety Scanner</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="../css/popup.css">
+</head>
+<body>
+  <header>
+    <img src="../images/icon48.jpg" alt="Safety Scanner Icon">
+    <h1>Web Safety Scanner</h1>
+  </header>
+  
+  <div class="container">
+    <div id="url-display" class="url-display">
+      <strong>Current Website:</strong>
+      <span id="current-url">Loading...</span>
+    </div>
+    
+    <div id="status-container" class="status checking">
+      <div class="status-icon">
+        <i class="fas fa-sync-alt"></i>
+      </div>
+      <div>
+        <div id="status-message">Checking website safety...</div>
+        <div id="status-details">Analyzing URL patterns and security features</div>
+      </div>
+    </div>
+    
+    <div class="action-buttons">
+      <button id="check-button">
+        <i class="fas fa-shield-alt"></i>
+        Scan Again
+      </button>
+      <button id="report-button" class="secondary">
+        <i class="fas fa-flag"></i>
+        Report Site
+      </button>
+    </div>
+    
+    <a href="#" id="settings-link" class="settings-link">
+      <i class="fas fa-cog"></i>
+      Extension Settings
+    </a>
+    
+    <div class="server-status">
+      <div id="server-indicator" class="status-indicator offline"></div>
+      <span id="server-status-text">Server Status: Checking...</span>
+    </div>
+  </div>
+  
+  <script src="../js/popup.js"></script>
+</body>
+</html>

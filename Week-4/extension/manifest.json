@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Anti Phishing Browser Extension",
+  "version": "1.0.0",
+  "description": "Scan websites for potential threats using a secure backend API",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["http://localhost:5000/*"],
+  "action": {
+    "default_popup": "pages/popup.html",
+    "default_icon": {
+      "16": "images/icon16.jpg",
+      "48": "images/icon48.jpg",
+      "128": "images/icon128.jpg"
+    }
+  },
+  "background": {
+    "service_worker": "js/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["js/content.js"]
+    }
+  ],
+  "options_page": "pages/options.html",
+  "icons": {
+    "16": "images/icon16.jpg",
+    "48": "images/icon48.jpg",
+    "128": "images/icon128.jpg"
+  }
+}

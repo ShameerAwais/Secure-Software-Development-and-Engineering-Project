@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Safety Scanner Settings</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="../css/options.css">
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <div class="logo-container">
+        <img src="../images/icon128.jpg" alt="Safety Scanner Icon" class="logo">
+      </div>
+      <h1>Web Safety Scanner Settings</h1>
+    </div>
+    
+    <div class="consent-info">
+      <p><i class="fas fa-info-circle"></i> This extension requires your consent to analyze websites for potential phishing threats. All scanning is initiated manually when you click the "Scan" button.</p>
+    </div>
+    
+    <div class="section">
+      <h2><i class="fas fa-server"></i> Connection Settings</h2>
+      
+      <div class="option">
+        <div class="option-description">
+          <div class="option-title">API Endpoint</div>
+          <div class="option-detail">Server endpoint for security service</div>
+          <input type="text" id="api-endpoint" class="input-field" placeholder="http://localhost:5000/api/v1">
+        </div>
+      </div>
+      
+      <div class="option">
+        <div class="option-description">
+          <div class="option-title">Offline Mode</div>
+          <div class="option-detail">Run in offline mode using local security checks only</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="offline-mode">
+          <span class="slider"></span>
+        </label>
+      </div>
+      
+      <div class="option">
+        <div class="option-description">
+          <div class="option-title">Auto Fallback</div>
+          <div class="option-detail">Automatically try alternative servers when primary is unavailable</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="auto-fallback" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      
+      <div id="server-status" class="option">
+        <div class="option-description">
+          <div class="option-title">Server Status</div>
+          <div class="option-detail" id="status-message">
+            <span class="status-indicator" id="server-indicator"></span>
+            <span id="status-text">Checking connection status...</span>
+          </div>
+        </div>
+        <button id="check-connection" class="check-button">
+          <i class="fas fa-sync-alt"></i>
+          Check Now
+        </button>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2><i class="fas fa-user-shield"></i> Privacy Settings</h2>
+      
+      <div class="option">
+        <div class="option-description">
+          <div class="option-title">Data Sharing Consent</div>
+          <div class="option-detail">Allow sharing of detected threats with our database to improve protection</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="data-sharing-consent" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      
+      <div class="option">
+        <div class="option-description">
+          <div class="option-title">Clear History</div>
+          <div class="option-detail">Remove all locally stored scan history and results</div>
+        </div>
+        <button id="clear-history" class="check-button">
+          <i class="fas fa-eraser"></i>
+          Clear Now
+        </button>
+      </div>
+    </div>
+    
+    <div class="button-container">
+      <button id="save-button" class="save-button">
+        <i class="fas fa-save"></i>
+        Save Settings
+      </button>
+    </div>
+  </div>
+  
+  <script src="../js/options.js"></script>
+</body>
+</html>

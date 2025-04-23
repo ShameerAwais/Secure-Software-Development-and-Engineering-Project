@@ -33,6 +33,5 @@ yarn-error.log*
 .env.production.local
 
 # API Keys and sensitive information
-**/key-installer.debug.js
-**/api_keys.js
-**/secrets.js
+
+Week-4/apiConfig.json
