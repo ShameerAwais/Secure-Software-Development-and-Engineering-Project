@@ -1,9 +1,0 @@
-{
-  "GOOGLE_SAFE_BROWSING_API_KEY": "AIzaSyD-ar66lj3OxdGOOOVjSB2RlJpot7cpVy4",
-  "PORT": 5000,
-  "NODE_ENV": "development",
-  "API_FALLBACK_SETTINGS": {
-    "USE_PHISHING_ENGINE_ONLY": true,
-    "DEFAULT_TIMEOUT": 5000
-  }
-}
