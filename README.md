@@ -1,6 +1,6 @@
-# No Phish - Anti-Phishing Browser Extension
+Anti-Phishing Browser Extension
 
-A browser extension that helps protect users from phishing websites using machine learning and secure architecture.
+A browser extension that helps protect users from phishing websites using secure architecture.
 
 ## Features
 
@@ -10,59 +10,72 @@ A browser extension that helps protect users from phishing websites using machin
 - User consent-based data collection
 - Configurable protection settings
 
+## Project Structure
+
+```
+backend/                # Server-side application
+├── config/             # API configuration
+├── controllers/        # Request handlers
+├── models/             # Database models
+├── routes/             # API routes
+└── utils/              # Utility functions including phishing detection engine
+
+extension/              # Browser extension
+├── css/                # Stylesheets
+├── images/             # Extension icons
+├── js/                 # JavaScript functionality
+│   ├── auth.js         # Authentication handling
+│   ├── background.js   # Background service worker
+│   ├── content.js      # Content scripts for web pages
+│   └── popup.js        # Extension popup functionality
+└── pages/              # HTML pages for extension UI
+```
+
 ## Development Setup
 
-1. Install dependencies:
+### Backend Setup
+
+1. Navigate to the backend directory:
+```bash
+cd backend
+```
+
+2. Install backend dependencies:
 ```bash
 npm install
 ```
 
-
-2. Build the extension:
+3. Start the backend server:
 ```bash
-npm run build
+node server.js
 ```
 
-3. For development with hot reloading:
+### Extension Setup
+
+1. Navigate to the extension directory:
 ```bash
-npm run dev
+cd extension
 ```
 
-4. Load the extension in your browser:
+2. Load the extension in your browser:
 - Open Chrome/Edge
 - Go to `chrome://extensions/` or `edge://extensions/`
 - Enable "Developer mode"
 - Click "Load unpacked"
-- Select the `dist` directory
-
-
-## Project Structure
-
-```
-src/
-├── background/     # Background scripts for extension functionality
-├── block_page/     # UI for blocked page display
-├── common/         # Shared utilities and constants
-├── content/        # Content scripts that run in web pages
-├── popup/          # Extension popup interface
-├── settings/       # Settings page interface
-└── utils/          # Utility functions for security and validation
-```
+- Select the `extension` directory
 
 ## Development Workflow
 
-1. Code changes should be made in the `src` directory
-2. Run `npm run lint` to check code quality
-3. Run `npm test` to run tests
-4. Build the extension with `npm run build`
-5. Load the extension in your browser to test
+1. Make changes to the relevant files in either the backend or extension directories
+2. For backend changes, restart the server to see effects
+3. For extension changes, reload the extension in your browser's extension page
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run tests and linting
+4. Test your implementation thoroughly
 5. Submit a pull request
 
 ## License
