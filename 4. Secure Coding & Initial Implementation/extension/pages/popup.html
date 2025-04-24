@@ -40,6 +40,99 @@
       </button>
     </div>
     
+    <!-- User Authentication Section -->
+    <div id="auth-section" class="auth-section">
+      <div id="auth-status" class="auth-status not-logged-in">
+        <i class="fas fa-user-circle"></i>
+        <span id="auth-status-text">Not logged in</span>
+      </div>
+      
+      <!-- Login/Register buttons (shown when logged out) -->
+      <div id="auth-buttons" class="auth-buttons">
+        <button id="login-button" class="auth-button">Login</button>
+        <button id="register-button" class="auth-button secondary">Register</button>
+      </div>
+      
+      <!-- User menu (shown when logged in) -->
+      <div id="user-menu" class="user-menu hidden">
+        <button id="profile-button" class="menu-button">
+          <i class="fas fa-user-shield"></i>
+          My Profile
+        </button>
+        <button id="history-button" class="menu-button">
+          <i class="fas fa-history"></i>
+          URL History
+        </button>
+        <button id="lists-button" class="menu-button">
+          <i class="fas fa-list"></i>
+          Allow/Block Lists
+        </button>
+        <button id="logout-button" class="menu-button warning">
+          <i class="fas fa-sign-out-alt"></i>
+          Logout
+        </button>
+      </div>
+      
+      <!-- Login Form -->
+      <div id="login-form" class="auth-form hidden">
+        <h3>Login</h3>
+        <form id="login-form-element">
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required>
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" required>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="login-back-button" class="secondary">Back</button>
+            <button type="submit">Login</button>
+          </div>
+          <div id="login-error" class="error-message hidden"></div>
+        </form>
+      </div>
+      
+      <!-- Register Form -->
+      <div id="register-form" class="auth-form hidden">
+        <h3>Create Account</h3>
+        <form id="register-form-element">
+          <div class="form-group">
+            <label for="register-name">Name</label>
+            <input type="text" id="register-name" required>
+          </div>
+          <div class="form-group">
+            <label for="register-email">Email</label>
+            <input type="email" id="register-email" required>
+          </div>
+          <div class="form-group">
+            <label for="register-password">Password</label>
+            <input type="password" id="register-password" required minlength="8">
+          </div>
+          <div class="form-actions">
+            <button type="button" id="register-back-button" class="secondary">Back</button>
+            <button type="submit">Register</button>
+          </div>
+          <div id="register-error" class="error-message hidden"></div>
+        </form>
+      </div>
+      
+      <!-- URL Actions for logged-in users -->
+      <div id="url-actions" class="url-actions hidden">
+        <div class="action-title">URL Actions:</div>
+        <div class="action-buttons">
+          <button id="add-to-allowlist" class="action-button">
+            <i class="fas fa-check-circle"></i>
+            Trust Site
+          </button>
+          <button id="add-to-blocklist" class="action-button warning">
+            <i class="fas fa-ban"></i>
+            Block Site
+          </button>
+        </div>
+      </div>
+    </div>
+    
     <a href="#" id="settings-link" class="settings-link">
       <i class="fas fa-cog"></i>
       Extension Settings

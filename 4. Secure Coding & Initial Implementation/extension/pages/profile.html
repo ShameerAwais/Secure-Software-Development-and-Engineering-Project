@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Profile - Web Safety Scanner</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-color: #4285f4;
+      --primary-dark: #3367d6;
+      --success-color: #0f9d58;
+      --success-bg: #e8f5e9;
+      --error-color: #db4437;
+      --error-bg: #ffebee;
+      --warning-color: #f4b400;
+      --warning-bg: #fff8e1;
+      --neutral-color: #5f6368;
+      --surface-color: #ffffff;
+      --background-light: #f8f9fa;
+      --border-color: #dadce0;
+      --text-primary: #202124;
+      --text-secondary: #5f6368;
+      --text-on-primary: #ffffff;
+      --box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+      --border-radius: 8px;
+    }
+    
+    body {
+      font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      color: var(--text-primary);
+      background-color: var(--background-light);
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    header {
+      background-color: var(--primary-color);
+      color: var(--text-on-primary);
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: var(--box-shadow);
+    }
+    
+    header h1 {
+      margin: 0;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+    }
+    
+    header i {
+      margin-right: 12px;
+    }
+    
+    .card {
+      background-color: var(--surface-color);
+      border-radius: var(--border-radius);
+      box-shadow: var(--box-shadow);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    
+    .card h2 {
+      margin-top: 0;
+      color: var(--primary-color);
+      font-size: 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+    }
+    
+    .card h2 i {
+      margin-right: 8px;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+    }
+    
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    
+    button {
+      background-color: var(--primary-color);
+      color: var(--text-on-primary);
+      border: none;
+      padding: 10px 16px;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+    }
+    
+    button i {
+      margin-right: 8px;
+    }
+    
+    button:hover {
+      background-color: var(--primary-dark);
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .nav-link {
+      color: var(--primary-color);
+      text-decoration: none;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: background-color 0.2s;
+      display: flex;
+      align-items: center;
+    }
+    
+    .nav-link i {
+      margin-right: 8px;
+    }
+    
+    .nav-link:hover {
+      background-color: var(--background-light);
+      text-decoration: underline;
+    }
+    
+    .error-message {
+      color: var(--error-color);
+      background-color: var(--error-bg);
+      padding: 12px;
+      border-radius: var(--border-radius);
+      margin-bottom: 16px;
+      display: none;
+    }
+    
+    .success-message {
+      color: var(--success-color);
+      background-color: var(--success-bg);
+      padding: 12px;
+      border-radius: var(--border-radius);
+      margin-bottom: 16px;
+      display: none;
+    }
+    
+    .account-info {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    
+    .account-info .label {
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    
+    .security-level {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .security-level label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+    }
+    
+    .security-level label:hover {
+      background-color: var(--background-light);
+    }
+    
+    .security-level input {
+      margin-right: 4px;
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+
+    /* Statistics styling */
+    .stat-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-box {
+      background-color: var(--background-light);
+      border-radius: var(--border-radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    
+    .stat-box.safe {
+      background-color: var(--success-bg);
+    }
+    
+    .stat-box.unsafe {
+      background-color: var(--error-bg);
+    }
+    
+    .stat-box.warning {
+      background-color: var(--warning-bg);
+    }
+    
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      margin: 8px 0;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    
+    .stat-period {
+      margin-bottom: 8px;
+      display: flex;
+      gap: 16px;
+    }
+    
+    .stat-period button {
+      background: none;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    
+    .stat-period button.active {
+      background-color: var(--primary-color);
+      color: white;
+      border-color: var(--primary-color);
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0,0,0,0.1);
+      border-radius: 50%;
+      border-top-color: var(--primary-color);
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* New Navigation Styles */
+    .breadcrumb-nav {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 8px 16px;
+      background-color: white;
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    
+    .breadcrumb-item {
+      display: flex;
+      align-items: center;
+    }
+    
+    .breadcrumb-item:not(:last-child)::after {
+      content: "›";
+      margin: 0 8px;
+      color: var(--text-secondary);
+    }
+    
+    .breadcrumb-item a {
+      color: var(--primary-color);
+      text-decoration: none;
+    }
+    
+    .breadcrumb-item.active {
+      color: var(--text-secondary);
+    }
+    
+    .content-grid {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 24px;
+    }
+    
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .sidebar-link {
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      border-radius: var(--border-radius);
+      text-decoration: none;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+    
+    .sidebar-link i {
+      margin-right: 12px;
+      width: 16px;
+      text-align: center;
+    }
+    
+    .sidebar-link:hover {
+      background-color: var(--background-light);
+    }
+    
+    .sidebar-link.active {
+      background-color: var(--primary-color);
+      color: white;
+    }
+    
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 24px;
+    }
+    
+    .tab-button {
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .tab-button:hover {
+      color: var(--primary-color);
+      background-color: transparent;
+    }
+    
+    .tab-button.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+      background-color: transparent;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    @media (max-width: 768px) {
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .sidebar {
+        margin-bottom: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1><i class="fas fa-user-shield"></i> User Profile</h1>
+    </div>
+  </header>
+  
+  <main class="container">
+    <div class="breadcrumb-nav">
+      <div class="breadcrumb-item">
+        <a href="popup.html"><i class="fas fa-home"></i> Home</a>
+      </div>
+      <div class="breadcrumb-item active">
+        User Profile
+      </div>
+    </div>
+    
+    <div class="nav-links">
+      <a href="options.html" class="nav-link"><i class="fas fa-cog"></i> Extension Settings</a>
+      <a href="history.html" class="nav-link"><i class="fas fa-history"></i> URL History</a>
+      <a href="lists.html" class="nav-link"><i class="fas fa-list"></i> Allow/Block Lists</a>
+    </div>
+    
+    <div id="not-authenticated" class="card hidden">
+      <h2><i class="fas fa-exclamation-circle"></i> Not Authenticated</h2>
+      <p>You need to log in to view your profile. Please open the extension popup and log in.</p>
+    </div>
+    
+    <div id="error-message" class="error-message"></div>
+    <div id="success-message" class="success-message"></div>
+    
+    <div id="profile-content">
+      <div class="content-grid">
+        <!-- Left Sidebar Navigation -->
+        <div class="sidebar">
+          <a href="#" class="sidebar-link active" data-tab="tab-overview">
+            <i class="fas fa-th-large"></i> Overview
+          </a>
+          <a href="#" class="sidebar-link" data-tab="tab-statistics">
+            <i class="fas fa-chart-bar"></i> Statistics
+          </a>
+          <a href="#" class="sidebar-link" data-tab="tab-account">
+            <i class="fas fa-user-cog"></i> Account Settings
+          </a>
+          <a href="#" class="sidebar-link" data-tab="tab-notifications">
+            <i class="fas fa-bell"></i> Notifications
+          </a>
+          <a href="#" class="sidebar-link" data-target="lists.html">
+            <i class="fas fa-list-alt"></i> Allow/Block Lists
+          </a>
+          <a href="#" class="sidebar-link" data-target="history.html">
+            <i class="fas fa-history"></i> Browsing History
+          </a>
+        </div>
+        
+        <!-- Main Content Area -->
+        <div class="main-content">
+          <!-- Overview Tab -->
+          <div id="tab-overview" class="tab-content active">
+            <div class="card">
+              <h2><i class="fas fa-user"></i> Account Information</h2>
+              <div class="account-info">
+                <div class="label">Email:</div>
+                <div id="user-email">Loading...</div>
+                
+                <div class="label">Name:</div>
+                <div id="user-name">Loading...</div>
+                
+                <div class="label">Account Type:</div>
+                <div id="user-role">Loading...</div>
+                
+                <div class="label">Member Since:</div>
+                <div id="user-since">Loading...</div>
+              </div>
+            </div>
+            
+            <!-- Quick Stats Summary -->
+            <div class="card">
+              <h2><i class="fas fa-shield-alt"></i> Safety Summary</h2>
+              <div class="stat-container">
+                <div class="stat-box safe">
+                  <div class="stat-label">Safe Sites (Month)</div>
+                  <div class="stat-value" id="overview-safe-sites">-</div>
+                </div>
+                
+                <div class="stat-box unsafe">
+                  <div class="stat-label">Threats Blocked (Month)</div>
+                  <div class="stat-value" id="overview-threats">-</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Statistics Tab -->
+          <div id="tab-statistics" class="tab-content">
+            <div class="card">
+              <h2><i class="fas fa-chart-bar"></i> Safety Statistics</h2>
+              
+              <div class="stat-period">
+                <button id="period-week" class="active">Week</button>
+                <button id="period-month">Month</button>
+                <button id="period-year">Year</button>
+                <div id="stats-loading" class="loading-spinner hidden"></div>
+              </div>
+              
+              <div class="stat-container">
+                <div class="stat-box">
+                  <div class="stat-label">Total Scans</div>
+                  <div class="stat-value" id="stat-total-scans">-</div>
+                </div>
+                
+                <div class="stat-box">
+                  <div class="stat-label">Unique Domains</div>
+                  <div class="stat-value" id="stat-unique-domains">-</div>
+                </div>
+                
+                <div class="stat-box safe">
+                  <div class="stat-label">Safe Sites</div>
+                  <div class="stat-value" id="stat-safe-sites">-</div>
+                </div>
+                
+                <div class="stat-box unsafe">
+                  <div class="stat-label">Threats Detected</div>
+                  <div class="stat-value" id="stat-threats">-</div>
+                </div>
+              </div>
+              
+              <div id="no-stats" class="hidden">
+                <p>No statistics available for this time period.</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Account Settings Tab -->
+          <div id="tab-account" class="tab-content">
+            <div class="card">
+              <h2><i class="fas fa-user-cog"></i> Account Settings</h2>
+              <form id="account-form">
+                <div class="form-group">
+                  <label for="display-name">Display Name</label>
+                  <input type="text" id="display-name" placeholder="Your display name">
+                </div>
+                
+                <div class="form-group">
+                  <label for="email-address">Email Address</label>
+                  <input type="email" id="email-address" placeholder="Your email address" disabled>
+                </div>
+                
+                <div class="form-group">
+                  <label for="current-password">Current Password</label>
+                  <input type="password" id="current-password" placeholder="Enter current password">
+                </div>
+                
+                <div class="form-group">
+                  <label for="new-password">New Password</label>
+                  <input type="password" id="new-password" placeholder="Enter new password">
+                </div>
+                
+                <div class="form-group">
+                  <label for="confirm-password">Confirm New Password</label>
+                  <input type="password" id="confirm-password" placeholder="Confirm new password">
+                </div>
+                
+                <button type="submit"><i class="fas fa-save"></i> Update Account</button>
+              </form>
+            </div>
+          </div>
+          
+          <!-- Notifications Tab -->
+          <div id="tab-notifications" class="tab-content">
+            <div class="card">
+              <h2><i class="fas fa-bell"></i> Notification Settings</h2>
+              <form id="notifications-form">
+                <div class="form-group">
+                  <label>
+                    <input type="checkbox" id="notify-threats">
+                    Notify on detected threats
+                  </label>
+                </div>
+                
+                <div class="form-group">
+                  <label>
+                    <input type="checkbox" id="notify-updates">
+                    Notify on extension updates
+                  </label>
+                </div>
+                
+                <div class="form-group">
+                  <label>
+                    <input type="checkbox" id="notify-summary">
+                    Weekly security summary
+                  </label>
+                </div>
+                
+                <div class="form-group">
+                  <label for="notification-level">Notification Level</label>
+                  <select id="notification-level">
+                    <option value="all">All notifications</option>
+                    <option value="important">Important only</option>
+                    <option value="minimal">Minimal</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+                
+                <button type="submit"><i class="fas fa-save"></i> Save Notification Settings</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  
+  <script type="module" src="../js/profile.js"></script>
+</body>
+</html>

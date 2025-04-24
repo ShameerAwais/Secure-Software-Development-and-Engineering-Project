@@ -1,13 +1,18 @@
 // Background service worker for Web Safety Scanner
-const API_BASE_URL = "http://localhost:5000/api/v1";
+const API_BASE_URL = "http://localhost:5001/api/v1";
 const FALLBACK_API_URLS = [
-  "http://localhost:5000/api/v1",
+  "http://localhost:5001/api/v1",
   "http://localhost:3000/api/v1", // Alternative local port
   "https://api.websafetyscanner.example.com/api/v1" // Example production URL
 ];
 
+// Import auth service using ES module import
+import authService from './auth.js';
+
 // Initialize extension settings
 chrome.runtime.onInstalled.addListener(() => {
+  console.log('Extension installed/updated - initializing settings');
+  
   // Store default API URL and fallback options with improved timeout settings
   chrome.storage.local.set({
     apiUrl: API_BASE_URL,
@@ -24,10 +29,11 @@ chrome.runtime.onInstalled.addListener(() => {
       backend: 8000,       // 8 second timeout for backend server
       maxRetries: 1        // Only retry once to avoid long waits
     }
+  }, () => {
+    console.log('Settings initialized with API URL:', API_BASE_URL);
+    // Run an initial server availability check
+    checkServerAvailability();
   });
-  
-  // Run an initial server availability check
-  checkServerAvailability();
 });
 
 // Check if the server is available - returns a promise
@@ -115,6 +121,7 @@ async function checkServerAvailability() {
     
     await chrome.storage.local.set({ lastServerStatus: serverStatus });
     console.log(`Server availability: ${isAvailable ? 'Online' : 'Offline'}`);
+    console.log(`Active API URL: ${activeUrl}`);
     
     return isAvailable;
   } catch (error) {
@@ -125,45 +132,432 @@ async function checkServerAvailability() {
 
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // URL scanning - check auth first
   if (message.action === "checkUrl") {
-    analyzeUrl(message.url)
-      .then(result => sendResponse(result))
-      .catch(error => sendResponse({ success: false, error: error.message }));
+    // Check if user is authenticated
+    authService.loadAuthState().then(state => {
+      if (!state.isAuthenticated) {
+        // User is not authenticated, return a "no scanning" response
+        sendResponse({
+          success: true, // Changed to true so UI can handle it properly
+          noScanning: true, // New flag to indicate no scanning option
+          requiresAuth: true,
+          data: {
+            url: message.url,
+            isSafe: null,
+            threatType: null,
+            analysisPhase: "NO_SCANNING",
+            details: {
+              message: "Scanning disabled. Please log in to use the scanning feature."
+            }
+          }
+        });
+      } else {
+        // User is authenticated, proceed with URL analysis
+        analyzeUrl(message.url, message.pageContent)
+          .then(result => sendResponse(result))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+      }
+    }).catch(error => {
+      console.error("Error checking auth state:", error);
+      sendResponse({ success: false, error: "Error checking authentication status" });
+    });
+    
     return true; // Required for async sendResponse
   }
   
+  // New action to open extension popup from content script
+  if (message.action === "openPopup") {
+    // Can't directly open the popup, but we can create a notification that when clicked will focus on the extension
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: '/images/icon128.jpg',
+      title: 'Web Safety Scanner',
+      message: 'Click here to open the Web Safety Scanner and log in',
+      priority: 2
+    }, (notificationId) => {
+      // Add listener for notification click
+      chrome.notifications.onClicked.addListener(function notificationClickHandler(clickedId) {
+        if (clickedId === notificationId) {
+          // Try to open the popup programmatically
+          chrome.action.openPopup();
+          // Remove this specific listener after it's used
+          chrome.notifications.onClicked.removeListener(notificationClickHandler);
+        }
+      });
+    });
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  // Server availability check
   if (message.action === "checkServerAvailability") {
     checkServerAvailability()
       .then(isAvailable => sendResponse({ success: true, isAvailable }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // Required for async sendResponse
   }
+  
+  // Authentication requests
+  if (message.action === "register") {
+    console.log("Registration request received in background.js:", { 
+      email: message.userData.email,
+      name: message.userData.name,
+      // Don't log password
+    });
+    
+    // Check server availability first
+    checkServerAvailability().then(isAvailable => {
+      if (!isAvailable) {
+        console.warn("Server unavailable, registration might fail");
+      }
+      
+      // Make sure authService has the current API URL
+      return chrome.storage.local.get(["apiUrl"]);
+    })
+    .then(result => {
+      console.log("Using API URL for registration:", result.apiUrl || API_BASE_URL);
+      
+      // Make sure to wait for the auth state to load
+      return authService.loadAuthState();
+    })
+    .then(() => {
+      // Now perform registration
+      return authService.register(message.userData);
+    })
+    .then(result => {
+      console.log("Registration result:", result);
+      sendResponse(result);
+    })
+    .catch(error => {
+      console.error("Registration error in background.js:", error);
+      sendResponse({ 
+        success: false, 
+        error: error.message,
+        message: "Error during registration: " + error.message 
+      });
+    });
+    return true;
+  }
+  
+  if (message.action === "login") {
+    console.log("Login request received in background.js:", { 
+      email: message.credentials.email,
+      // Don't log password
+    });
+    
+    // Check server availability first
+    checkServerAvailability().then(isAvailable => {
+      if (!isAvailable) {
+        console.warn("Server unavailable, login might fail");
+      }
+      
+      // Make sure authService has the current API URL
+      return chrome.storage.local.get(["apiUrl"]);
+    })
+    .then(result => {
+      console.log("Using API URL for login:", result.apiUrl || API_BASE_URL);
+      
+      // Make sure to wait for the auth state to load
+      return authService.loadAuthState();
+    })
+    .then(() => {
+      // Now perform login
+      return authService.login(message.credentials);
+    })
+    .then(result => {
+      console.log("Login result:", result);
+      sendResponse(result);
+    })
+    .catch(error => {
+      console.error("Login error in background.js:", error);
+      sendResponse({ 
+        success: false, 
+        error: error.message,
+        message: "Error during login: " + error.message 
+      });
+    });
+    return true;
+  }
+  
+  if (message.action === "logout") {
+    authService.logout()
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  
+  // Profile and account features - ensure they require authentication
+  if (["getProfile", "updatePreferences", "updateAccount", "updateLists", "getUserHistory", "getUserStats"].includes(message.action)) {
+    // First check if user is authenticated
+    authService.loadAuthState().then(state => {
+      if (!state.isAuthenticated) {
+        sendResponse({
+          success: false,
+          requiresAuth: true,
+          message: "Authentication required to access this feature"
+        });
+      } else {
+        // User is authenticated, proceed with the requested action
+        switch (message.action) {
+          case "getProfile":
+            authService.getProfile()
+              .then(result => sendResponse(result))
+              .catch(error => sendResponse({ success: false, error: error.message }));
+            break;
+            
+          case "updatePreferences":
+            authService.updatePreferences(message.preferences)
+              .then(result => sendResponse(result))
+              .catch(error => sendResponse({ success: false, error: error.message }));
+            break;
+            
+          case "updateAccount":
+            handleAccountUpdate(message, sendResponse);
+            break;
+            
+          case "updateLists":
+            authService.updateLists(message.listAction, message.listType, message.url)
+              .then(result => sendResponse(result))
+              .catch(error => sendResponse({ success: false, error: error.message }));
+            break;
+            
+          case "getUserHistory":
+            authService.getUserHistory(message.page, message.limit)
+              .then(result => sendResponse(result))
+              .catch(error => sendResponse({ success: false, error: error.message }));
+            break;
+            
+          case "getUserStats":
+            authService.getUserStats(message.timeRange)
+              .then(result => sendResponse(result))
+              .catch(error => sendResponse({ success: false, error: error.message }));
+            break;
+        }
+      }
+    }).catch(error => {
+      console.error(`Error checking auth state for ${message.action}:`, error);
+      sendResponse({ success: false, error: "Error checking authentication status" });
+    });
+    
+    return true; // Required for async sendResponse
+  }
+  
+  if (message.action === "getAuthStatus") {
+    console.log("Auth status request received");
+    
+    authService.loadAuthState()
+      .then(state => {
+        console.log("Auth state loaded:", {
+          isAuthenticated: state.isAuthenticated,
+          user: state.user ? state.user.email : null
+        });
+        
+        sendResponse({
+          success: true,
+          isAuthenticated: state.isAuthenticated,
+          user: state.user
+        });
+      })
+      .catch(error => {
+        console.error("Auth status error:", error);
+        sendResponse({ 
+          success: false, 
+          error: error.message,
+          isAuthenticated: false
+        });
+      });
+    return true;
+  }
 });
 
+// Helper function to handle account update
+function handleAccountUpdate(message, sendResponse) {
+  console.log("Account update request received in background.js:", { 
+    name: message.accountUpdate.name,
+    passwordUpdate: message.accountUpdate.currentPassword ? true : false
+  });
+  
+  // Check server availability first
+  checkServerAvailability().then(isAvailable => {
+    if (!isAvailable) {
+      console.warn("Server unavailable, account update might fail");
+      return { success: false, message: "Server is unavailable" };
+    }
+    
+    // Make sure authService has the current API URL
+    return chrome.storage.local.get(["apiUrl"]);
+  })
+  .then(result => {
+    console.log("Using API URL for account update:", result.apiUrl || API_BASE_URL);
+    
+    if (result.success === false) {
+      return result; // Pass through the error from server availability check
+    }
+    
+    // Make sure to wait for the auth state to load
+    return authService.loadAuthState();
+  })
+  .then((result) => {
+    if (result && result.success === false) {
+      return result; // Pass through the error
+    }
+    
+    // Create updateAccountData function in auth service if it doesn't exist yet
+    if (!authService.updateAccountData) {
+      authService.updateAccountData = async function(accountData) {
+        if (!this.isAuthenticated) {
+          return {
+            success: false,
+            message: 'Not authenticated'
+          };
+        }
+        
+        try {
+          const response = await fetch(`${this.API_URL}/auth/update-account`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.token}`
+            },
+            body: JSON.stringify(accountData)
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            // Update local user data
+            this.user = {
+              ...this.user,
+              name: data.user.name,
+              email: data.user.email
+            };
+            
+            await this.saveAuthState();
+          }
+          
+          return data;
+        } catch (error) {
+          console.error('Update account error:', error);
+          return {
+            success: false,
+            message: 'Network or server error updating account'
+          };
+        }
+      };
+    }
+    
+    // Now perform account update
+    return authService.updateAccountData(message.accountUpdate);
+  })
+  .then(result => {
+    console.log("Account update result:", result);
+    sendResponse(result);
+  })
+  .catch(error => {
+    console.error("Account update error in background.js:", error);
+    sendResponse({ 
+      success: false, 
+      error: error.message,
+      message: "Error during account update: " + error.message 
+    });
+  });
+}
+
 // URL Analyzer function - first step in the architecture
-async function analyzeUrl(url) {
+async function analyzeUrl(url, pageContent = null) {
+  // Ensure user is authenticated
+  const authState = await authService.loadAuthState();
+  if (!authState.isAuthenticated) {
+    return {
+      success: false,
+      requiresAuth: true,
+      data: {
+        url,
+        isSafe: null,
+        threatType: null,
+        analysisPhase: "AUTH_REQUIRED",
+        details: {
+          message: "Authentication required to analyze URLs"
+        }
+      }
+    };
+  }
+  
   try {
     console.log("URL Analyzer: Analyzing URL", url);
     
-    // Step 1: Basic URL pattern checks (local analysis)
-    const urlPattern = analyzeUrlPattern(url);
-    if (!urlPattern.isSafe) {
+    // Extract domain from URL for list checking
+    let domain;
+    try {
+      domain = new URL(url).hostname;
+      // Remove www. if present
+      domain = domain.replace(/^www\./, '');
+    } catch (e) {
+      console.warn("Invalid URL format:", url);
+      domain = url;
+    }
+    
+    // Check if domain is in user's allow list
+    if (authState.user && authState.user.allowList && 
+        authState.user.allowList.some(item => domain.includes(item.url) || item.url.includes(domain))) {
+      console.log("URL is in user's allow list:", domain);
       return {
         success: true,
         data: {
           url,
-          isSafe: false,
-          threatType: "SUSPICIOUS_URL_PATTERN",
-          analysisPhase: "URL_ANALYZER",
+          isSafe: true,
+          threatType: null,
+          analysisPhase: "ALLOW_LIST",
           details: {
-            reason: urlPattern.reason
+            reason: "Domain is in your trusted sites list",
+            listMatch: "allowList"
           }
         }
       };
     }
     
-    // Step 2: Check URL with backend services (Safe Browsing API + Phishing Engine)
-    return await checkUrlWithBackend(url);
+    // Check if domain is in user's block list
+    if (authState.user && authState.user.blockList && 
+        authState.user.blockList.some(item => domain.includes(item.url) || item.url.includes(domain))) {
+      console.log("URL is in user's block list:", domain);
+      return {
+        success: true,
+        data: {
+          url,
+          isSafe: false,
+          threatType: "BLOCKLIST",
+          analysisPhase: "BLOCK_LIST",
+          details: {
+            reason: "Domain is in your blocked sites list",
+            listMatch: "blockList"
+          }
+        }
+      };
+    }
+    
+    // Skip local URL pattern analysis and rely entirely on Google Safe Browsing API
+    // for URL scanning to reduce false positives
+    
+    // Extract page content for analysis if available
+    let contentAnalysis = null;
+    if (pageContent && !pageContent.error) {
+      console.log("Content Analyzer: Analyzing webpage content");
+      contentAnalysis = analyzePageContent(pageContent);
+    }
+    
+    // Use backend service for URL scanning (Google Safe Browsing API) 
+    // and page content analysis
+    console.log("Sending URL to backend for Google Safe Browsing analysis");
+    
+    // Use authenticated endpoint if user is logged in
+    if (authService.isAuthenticated) {
+      console.log("User is authenticated. Using personalized URL checking");
+      return await checkUrlWithAuthenticatedBackend(url, contentAnalysis);
+    } else {
+      return await checkUrlWithBackend(url, contentAnalysis);
+    }
   } catch (error) {
     console.error("Error in URL analysis:", error);
     return { 
@@ -180,262 +574,235 @@ async function analyzeUrl(url) {
   }
 }
 
-// Analyze URL pattern for obvious phishing attempts
-function analyzeUrlPattern(url) {
-  // Convert to lowercase for easier comparison
-  const lowerUrl = url.toLowerCase();
-  
-  // Check for basic suspicious patterns
-  const suspiciousTerms = [
-    'login', 'signin', 'account', 'password', 'secure', 'update', 'verify',
-    'wallet', 'banking', 'credit', 'authenticate', 'security'
-  ];
-  
-  // Check for lookalike domains of popular services
-  const lookalikes = {
-    'google': ['g00gle', 'g0ogle', 'googie', 'gooogle'],
-    'microsoft': ['micr0soft', 'rnicrosoft', 'microsofl'],
-    'apple': ['appie', 'ap-ple', 'appl-e'],
-    'amazon': ['arnazon', 'amaz0n', 'amazan'],
-    'paypal': ['paypaI', 'paypa1', 'paypai']
-  };
-  
-  // Check for IP address in URL instead of domain name
-  const ipAddressRegex = /https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
-  if (ipAddressRegex.test(lowerUrl)) {
-    return { 
-      isSafe: false, 
-      reason: 'IP address used instead of domain name'
-    };
-  }
-  
-  // Check for excessive subdomains
-  const urlObj = new URL(url);
-  const domainParts = urlObj.hostname.split('.');
-  if (domainParts.length > 5) {
-    return {
-      isSafe: false,
-      reason: 'Excessive subdomains'
-    };
-  }
-  
-  // Check for lookalike domains
-  for (const [genuine, fakes] of Object.entries(lookalikes)) {
-    if (fakes.some(fake => urlObj.hostname.includes(fake))) {
-      return {
-        isSafe: false,
-        reason: `Potential lookalike domain of ${genuine}`
-      };
-    }
-  }
-  
-  // Default return if no suspicious patterns found
-  return { isSafe: true };
-}
-
-// Function to check URL safety via backend services
-async function checkUrlWithBackend(url) {
+/**
+ * Check URL with authenticated backend services
+ * @param {string} url - URL to check
+ * @param {object} contentAnalysis - Result of local content analysis
+ * @returns {object} Safety check result
+ */
+async function checkUrlWithAuthenticatedBackend(url, contentAnalysis = null) {
   try {
-    // Get current settings
-    const settings = await chrome.storage.local.get([
-      "apiUrl", 
-      "lastServerStatus", 
-      "offlineMode"
-    ]);
+    // Get API URL from storage
+    const result = await chrome.storage.local.get(['apiUrl']);
+    const apiUrl = result.apiUrl || API_BASE_URL;
     
-    const apiUrl = settings.apiUrl || API_BASE_URL;
+    // Get timeout settings
+    const timeoutSettings = await chrome.storage.local.get(['apiTimeouts']);
+    const timeout = timeoutSettings.apiTimeouts?.backend || 8000;
     
-    console.log(`[Google Safe Browsing] Using API URL: ${apiUrl}`);
+    // Set up abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
     
-    // Check if we're in offline mode
-    if (settings.offlineMode) {
-      console.log("Operating in offline mode - skipping backend check");
-      return { 
+    // Prepare request payload
+    const payload = {
+      url,
+      includeContentAnalysis: !!contentAnalysis,
+      contentScore: contentAnalysis?.score || 0,
+      threatIndicators: contentAnalysis?.indicators || []
+    };
+    
+    // Make the request to authenticated endpoint
+    const response = await fetch(`${apiUrl}/urls/user-check`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${authService.token}`
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    // Process response
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Handle both response formats - new format has 'result' property
+      const resultData = data.result || data.data || {};
+      
+      console.log("Authenticated backend response:", resultData);
+      
+      return {
         success: true,
-        fallback: true,
         data: {
           url,
-          isSafe: null, 
-          threatType: null,
-          analysisPhase: "OFFLINE_MODE",
-          details: {
-            message: "Extension is in offline mode. Only local checks are applied."
-          }
+          isSafe: resultData.isSafe,
+          threatType: resultData.threatType,
+          analysisPhase: "BACKEND_FULL",
+          phishingScore: resultData.phishingScore,
+          details: resultData.details || {}
         }
       };
-    }
-    
-    // Check if server is available before attempting connection
-    // If we haven't checked or last check was more than 5 minutes ago
-    const shouldCheckAvailability = !settings.lastServerStatus || 
-      !settings.lastServerStatus.lastChecked || 
-      (new Date() - new Date(settings.lastServerStatus.lastChecked)) > 5 * 60 * 1000;
-      
-    if (shouldCheckAvailability) {
-      console.log("Checking server availability before proceeding");
-      await checkServerAvailability();
-      
-      // Refresh settings after availability check (may have changed to fallback URL)
-      const updatedSettings = await chrome.storage.local.get([
-        "apiUrl", 
-        "lastServerStatus"
-      ]);
-      
-      // Use potentially updated URL
-      if (updatedSettings.apiUrl) {
-        console.log(`Using URL from availability check: ${updatedSettings.apiUrl}`);
-      }
-    }
-    
-    // Get the latest server status
-    const latestSettings = await chrome.storage.local.get(["lastServerStatus"]);
-    const serverStatus = latestSettings.lastServerStatus || { isAvailable: false };
-    
-    // If server is known to be unavailable, skip network requests entirely
-    if (!serverStatus.isAvailable) {
-      console.log("Server is known to be unavailable, skipping network requests");
-      return { 
-        success: true,
+    } else {
+      // Handle error responses
+      return {
+        success: false,
+        error: `Backend error: ${response.status}`,
         fallback: true,
         data: {
           url,
           isSafe: null,
           threatType: null,
-          analysisPhase: "SERVER_UNAVAILABLE",
+          analysisPhase: "ERROR",
           details: {
-            message: "Security service is unavailable. Using local checks only."
+            message: `Error from backend service: ${response.statusText}`
+          }
+        }
+      };
+    }
+  } catch (error) {
+    // Handle network errors or timeouts
+    console.error("Error checking URL with backend:", error);
+    
+    // For timeouts, provide a specific message
+    if (error.name === "AbortError") {
+      return {
+        success: false,
+        error: "Request timed out",
+        fallback: true,
+        data: {
+          url,
+          isSafe: null,
+          threatType: null,
+          analysisPhase: "TIMEOUT",
+          details: {
+            message: "Backend service request timed out"
           }
         }
       };
     }
     
-    console.log("[Google Safe Browsing] Checking URL with backend services");
-    
-    // Add retry logic for network resilience
-    const MAX_RETRIES = 2;
-    let retries = 0;
-    let lastError = null;
-    
-    while (retries <= MAX_RETRIES) {
-      try {
-        console.log(`[Google Safe Browsing] Making API request to ${apiUrl}/urls/check (attempt ${retries + 1}/${MAX_RETRIES + 1})`);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // Extended timeout to 8 seconds
-        
-        const response = await fetch(`${apiUrl}/urls/check`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ url }),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        console.log("[Google Safe Browsing] API response received:", result);
-        
-        // Enhanced response with phishing detection data
-        if (result.success) {
-          // Check if Google Safe Browsing detection is included
-          if (result.data.details && result.data.details.safeBrowsing) {
-            console.log(`[Google Safe Browsing] Result: ${result.data.details.safeBrowsing.isSafe ? 'Safe' : 'Unsafe'}`);
-            if (!result.data.details.safeBrowsing.isSafe) {
-              console.log(`[Google Safe Browsing] Threat type: ${result.data.details.safeBrowsing.threatType}`);
-            }
-          } else {
-            console.warn("[Google Safe Browsing] No Safe Browsing data in response");
-          }
-          
-          // Add phishing indicators to the threat description if detected
-          if (result.data.details && 
-              result.data.details.phishingAnalysis && 
-              result.data.details.phishingAnalysis.isPhishing) {
-            
-            console.log(`Phishing detected`);
-            
-            // Add phishing analysis phase
-            result.data.analysisPhase = "PHISHING_ENGINE";
-            
-            // If there are phishing indicators, add them to the details
-            if (result.data.details.phishingAnalysis.indicators && 
-                result.data.details.phishingAnalysis.indicators.length > 0) {
-              // Gather top 3 phishing indicators for display
-              const topIndicators = result.data.details.phishingAnalysis.indicators.slice(0, 3);
-              result.data.details.threatIndicators = topIndicators;
-            }
-          } else {
-            result.data.analysisPhase = "SAFE_BROWSING_API";
-          }
-        }
-        
-        return result;
-        
-      } catch (error) {
-        lastError = error;
-        console.error(`[Google Safe Browsing] API call error:`, error);
-        
-        // Only retry on network errors, not on API errors
-        if (error.name === 'AbortError' || 
-            error.message.includes('Failed to fetch') || 
-            error.message.includes('NetworkError') ||
-            error.message.includes('network') ||
-            error.message.includes('timeout')) {
-          
-          retries++;
-          
-          if (retries <= MAX_RETRIES) {
-            console.log(`[Google Safe Browsing] Network error, retrying (${retries}/${MAX_RETRIES})...`);
-            // Wait before retry (exponential backoff)
-            await new Promise(r => setTimeout(r, 1000 * retries));
-            continue;
-          }
-        } else {
-          // Don't retry non-network errors
-          break;
-        }
-      }
-    }
-    
-    // If we got here, all retries failed
-    console.error("[Google Safe Browsing] Error checking URL with backend after retries:", lastError);
-    
-    // Create a user-friendly error message based on error type
-    let errorMessage = "Unknown error occurred";
-    if (lastError) {
-      if (lastError.name === 'AbortError') {
-        errorMessage = "Connection timed out";
-      } else if (lastError.message.includes('Failed to fetch') || 
-                lastError.message.includes('NetworkError')) {
-        errorMessage = "Failed to connect to security service";
-      } else {
-        errorMessage = lastError.message;
-      }
-    }
-    
-    throw new Error(errorMessage);
-    
-  } catch (error) {
-    console.error("[Google Safe Browsing] Error checking URL with backend:", error);
-    
-    // Return graceful error with notification that we're falling back to local checks
-    return { 
-      success: false, 
-      error: error.message || "Failed to connect to security service",
+    // For other errors
+    return {
+      success: false,
+      error: error.message,
       fallback: true,
       data: {
         url,
-        isSafe: null, // Use null to indicate we couldn't determine safety
+        isSafe: null,
         threatType: null,
-        analysisPhase: "CONNECTION_ERROR",
+        analysisPhase: "ERROR",
         details: {
-          message: "Using local checks only. Security service is unavailable."
+          message: `Network or server error: ${error.message}`
+        }
+      }
+    };
+  }
+}
+
+/**
+ * Check URL with unauthenticated backend services
+ * @param {string} url - URL to check
+ * @param {object} contentAnalysis - Result of local content analysis
+ * @returns {object} Safety check result
+ */
+async function checkUrlWithBackend(url, contentAnalysis = null) {
+  try {
+    // Get API URL from storage
+    const result = await chrome.storage.local.get(['apiUrl']);
+    const apiUrl = result.apiUrl || API_BASE_URL;
+    
+    // Get timeout settings
+    const timeoutSettings = await chrome.storage.local.get(['apiTimeouts']);
+    const timeout = timeoutSettings.apiTimeouts?.backend || 8000;
+    
+    // Set up abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    // Prepare request payload
+    const payload = {
+      url,
+      includeContentAnalysis: !!contentAnalysis,
+      contentScore: contentAnalysis?.score || 0,
+      threatIndicators: contentAnalysis?.indicators || []
+    };
+    
+    // Make the request to unauthenticated endpoint
+    const response = await fetch(`${apiUrl}/urls/check`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    // Process response
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Handle both response formats - new format has 'result' property
+      const resultData = data.result || data.data || {};
+      
+      console.log("Backend response:", resultData);
+      
+      return {
+        success: true,
+        data: {
+          url,
+          isSafe: resultData.isSafe,
+          threatType: resultData.threatType,
+          analysisPhase: "BACKEND_BASIC",
+          phishingScore: resultData.phishingScore,
+          details: resultData.details || {}
+        }
+      };
+    } else {
+      // Handle error responses
+      return {
+        success: false,
+        error: `Backend error: ${response.status}`,
+        fallback: true,
+        data: {
+          url,
+          isSafe: null,
+          threatType: null,
+          analysisPhase: "ERROR",
+          details: {
+            message: `Error from backend service: ${response.statusText}`
+          }
+        }
+      };
+    }
+  } catch (error) {
+    // Handle network errors or timeouts
+    console.error("Error checking URL with backend:", error);
+    
+    // For timeouts, provide a specific message
+    if (error.name === "AbortError") {
+      return {
+        success: false,
+        error: "Request timed out",
+        fallback: true,
+        data: {
+          url,
+          isSafe: null,
+          threatType: null,
+          analysisPhase: "TIMEOUT",
+          details: {
+            message: "Backend service request timed out"
+          }
+        }
+      };
+    }
+    
+    // For other errors
+    return {
+      success: false,
+      error: error.message,
+      fallback: true,
+      data: {
+        url,
+        isSafe: null,
+        threatType: null,
+        analysisPhase: "ERROR",
+        details: {
+          message: `Network or server error: ${error.message}`
         }
       }
     };

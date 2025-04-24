@@ -2,11 +2,14 @@ const axios = require("axios");
 const PhishingEngine = require("../utils/phishingDetectionEngine");
 // Add config import
 const config = require("../config/apiConfig.json");
+const URLHistory = require('../models/URLHistory');
+const User = require('../models/User');
+const phishingEngine = require('../utils/phishingDetectionEngine');
 
 // Controller for handling URL safety checks
 exports.checkUrlSafety = async (req, res) => {
   try {
-    const { url } = req.body;
+    const { url, pageContent } = req.body;
     
     if (!url) {
       return res.status(400).json({ 
@@ -21,23 +24,61 @@ exports.checkUrlSafety = async (req, res) => {
     console.log("[URL Controller] Step 1: Checking with Google Safe Browsing API");
     const safeBrowsingResult = await checkWithGoogleSafeBrowsing(url);
     
-    // Step 2: Run URL through Phishing Detection Engine for comprehensive analysis
-    console.log("[URL Controller] Step 2: Running Phishing Detection Engine");
-    const phishingAnalysis = await PhishingEngine.analyzeUrl(url, safeBrowsingResult);
+    // If Google Safe Browsing detected it as unsafe, return immediately
+    if (!safeBrowsingResult.isSafe && !safeBrowsingResult.fallback) {
+      console.log(`[URL Controller] Google Safe Browsing detected unsafe URL: ${url} - ${safeBrowsingResult.threatType}`);
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          url,
+          isSafe: false,
+          threatType: safeBrowsingResult.threatType,
+          phishingScore: 100,
+          details: {
+            safeBrowsing: {
+              isSafe: false,
+              threatType: safeBrowsingResult.threatType
+            },
+            source: "Google Safe Browsing API"
+          }
+        }
+      });
+    }
     
-    // Determine final safety verdict based on all checks
-    // URL is unsafe if either Google Safe Browsing flags it OR phishing score is above threshold
-    const isSafe = safeBrowsingResult.isSafe && !phishingAnalysis.isPhishing;
+    // Step 2: If URL is safe according to Google, analyze page content if available
+    console.log("[URL Controller] Step 2: Running Page Content Analysis");
+    const phishingAnalysis = await PhishingEngine.analyzeUrl(url, safeBrowsingResult, pageContent);
     
-    // Get the main threat type 
+    // For URLs, we trust Google Safe Browsing entirely
+    // For content, we use our own phishing detection engine
+    const isSafe = safeBrowsingResult.isSafe;
+    
+    // Get the threat type
     let threatType = null;
     if (!safeBrowsingResult.isSafe) {
       threatType = safeBrowsingResult.threatType;
-    } else if (phishingAnalysis.isPhishing) {
-      threatType = "PHISHING";
+    } else if (phishingAnalysis.contentAnalysis && 
+              phishingAnalysis.contentAnalysis.contentScore >= PhishingEngine.PHISHING_THRESHOLD) {
+      threatType = "SUSPICIOUS_CONTENT";
     }
     
-    // No longer saving to database
+    // Prepare the response with additional content analysis info if available
+    const responseDetails = {
+      safeBrowsing: {
+        isSafe: safeBrowsingResult.isSafe,
+        threatType: safeBrowsingResult.threatType
+      }
+    };
+    
+    // Add content analysis details if available
+    if (pageContent && phishingAnalysis.contentAnalysis) {
+      responseDetails.contentAnalysis = {
+        score: phishingAnalysis.contentAnalysis.contentScore,
+        indicators: phishingAnalysis.phishingIndicators,
+        threshold: PhishingEngine.PHISHING_THRESHOLD
+      };
+    }
     
     return res.status(200).json({
       success: true,
@@ -46,18 +87,7 @@ exports.checkUrlSafety = async (req, res) => {
         isSafe,
         threatType,
         phishingScore: phishingAnalysis.phishingScore,
-        details: {
-          safeBrowsing: {
-            isSafe: safeBrowsingResult.isSafe,
-            threatType: safeBrowsingResult.threatType
-          },
-          phishingAnalysis: {
-            isPhishing: phishingAnalysis.isPhishing,
-            score: phishingAnalysis.phishingScore,
-            indicators: phishingAnalysis.phishingIndicators,
-            threshold: PhishingEngine.PHISHING_THRESHOLD
-          }
-        }
+        details: responseDetails
       }
     });
     
@@ -135,7 +165,6 @@ async function checkWithGoogleSafeBrowsing(url) {
         
         // Improved debugging
         console.log(`[Safe Browsing] Request URL: https://safebrowsing.googleapis.com/v4/threatMatches:find`);
-        console.log(`[Safe Browsing] Request body: ${JSON.stringify(requestBody, null, 2)}`);
         
         // Reduced timeout to prevent long waiting periods
         const response = await axios({
@@ -216,7 +245,7 @@ async function checkWithGoogleSafeBrowsing(url) {
       threatType: null, 
       error: lastError ? lastError.message : "API connection timeout",
       fallback: true,
-      note: "Falling back to local detection methods"
+      note: "Falling back to content analysis only"
     };
     
   } catch (error) {
@@ -254,17 +283,332 @@ async function checkWithGoogleSafeBrowsing(url) {
       threatType: null, 
       error: errorType,
       fallback: true,
-      note: "Using local detection only"
+      note: "Using content analysis only due to API error"
     };
   }
 }
 
-// Controller for history endpoint - now just returns empty array since we're not storing URLs
+// Function to check URL and save to user history if authenticated
+exports.checkURL = async (req, res) => {
+  try {
+    const { url, pageContent } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({
+        success: false,
+        message: 'URL is required'
+      });
+    }
+    
+    // First check with Google Safe Browsing API
+    const safeBrowsingResult = await checkWithGoogleSafeBrowsing(url);
+    console.log(`[URL Check] Safe Browsing result for ${url}: isSafe=${safeBrowsingResult.isSafe}, threatType=${safeBrowsingResult.threatType || 'None'}`);
+    
+    // Only analyze content if URL is safe according to Google
+    let contentAnalysisResult = null;
+    let phishingScore = 0;
+    if (pageContent) {
+      // Use the phishing detection engine only for content analysis
+      const phishingAnalysis = await phishingEngine.analyzeUrl(url, safeBrowsingResult, pageContent);
+      contentAnalysisResult = phishingAnalysis.contentAnalysis;
+      phishingScore = phishingAnalysis.phishingScore || 0;
+    }
+    
+    // URL is unsafe only if Google Safe Browsing explicitly flags it
+    // Make sure we use the actual values from safeBrowsingResult
+    let isSafe = safeBrowsingResult.isSafe === true;
+    let threatType = safeBrowsingResult.threatType;
+    let result = {
+      isSafe,
+      threatType,
+      phishingScore,
+      details: {
+        source: isSafe ? (safeBrowsingResult.fallback ? "Fallback detection" : "Google Safe Browsing API") : "Google Safe Browsing API"
+      }
+    };
+    
+    // Include content analysis if available
+    if (contentAnalysisResult) {
+      result.contentAnalysis = contentAnalysisResult;
+    }
+    
+    // If user is authenticated, check personal lists and save to history
+    if (req.isAuthenticated) {
+      const user = await User.findById(req.user.id);
+      
+      if (user) {
+        // Check if URL is in user's allowlist
+        const isAllowed = user.allowList.some(item => url.includes(item.url));
+        if (isAllowed) {
+          result.isSafe = true;
+          result.details = {
+            ...result.details,
+            source: 'User allowlist',
+            message: 'URL is in your trusted sites list'
+          };
+        }
+        
+        // Check if URL is in user's blocklist
+        const isBlocked = user.blockList.some(item => url.includes(item.url));
+        if (isBlocked) {
+          result.isSafe = false;
+          result.details = {
+            ...result.details,
+            source: 'User blocklist',
+            message: 'URL is in your blocked sites list'
+          };
+        }
+        
+        // Save to user history - include content analysis flag
+        const history = new URLHistory({
+          user: user._id,
+          url,
+          result,
+          device: req.headers['user-agent'] || 'Unknown',
+          hasContentAnalysis: pageContent ? true : false
+        });
+        
+        await history.save();
+      }
+    }
+    
+    // Log the final result for debugging
+    console.log(`[URL Check] Final result for ${url}: isSafe=${result.isSafe}, threatType=${result.threatType || 'None'}`);
+    
+    return res.status(200).json({
+      success: true,
+      result,
+      userStatus: req.isAuthenticated ? 'authenticated' : 'anonymous'
+    });
+  } catch (error) {
+    console.error('URL check error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error checking URL',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get URL history - legacy non-authenticated version
+ */
 exports.getUrlHistory = async (req, res) => {
+  // For non-authenticated users, just return empty history with a message
   return res.status(200).json({
     success: true,
-    count: 0,
-    data: [],
-    message: "URL history storage has been disabled"
+    message: 'Authentication required to view history',
+    data: {
+      history: [],
+      totalCount: 0,
+      page: 1,
+      totalPages: 0
+    }
   });
+};
+
+/**
+ * Get authenticated user URL history with pagination
+ */
+exports.getUserHistory = async (req, res) => {
+  try {
+    // Check authentication
+    if (!req.isAuthenticated) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    const userId = req.user.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Query user history with pagination
+    const totalCount = await URLHistory.countDocuments({ user: userId });
+    const history = await URLHistory.find({ user: userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        history,
+        totalCount,
+        page,
+        totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user history:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error fetching history',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update user action for a URL (e.g. mark as trusted, report as unsafe)
+ */
+exports.updateUserAction = async (req, res) => {
+  try {
+    // Check authentication
+    if (!req.isAuthenticated) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    const { historyId, action } = req.body;
+
+    if (!historyId || !action) {
+      return res.status(400).json({
+        success: false,
+        message: 'History ID and action are required'
+      });
+    }
+
+    // Validate action
+    const validActions = ['trust', 'block', 'report'];
+    if (!validActions.includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid action. Must be one of: ' + validActions.join(', ')
+      });
+    }
+
+    // Find the history entry
+    const history = await URLHistory.findById(historyId);
+
+    if (!history) {
+      return res.status(404).json({
+        success: false,
+        message: 'History entry not found'
+      });
+    }
+
+    // Verify ownership
+    if (history.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this history entry'
+      });
+    }
+
+    // Update the user action
+    history.userAction = action;
+    await history.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'User action updated successfully',
+      data: history
+    });
+  } catch (error) {
+    console.error('Error updating user action:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error updating user action',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get user URL safety statistics
+ */
+exports.getUserStats = async (req, res) => {
+  try {
+    // Check authentication
+    if (!req.isAuthenticated) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    const userId = req.user.id;
+    const timeRange = req.query.range || 'month';
+    
+    // Set date filter based on time range
+    const dateFilter = {};
+    const now = new Date();
+    
+    switch(timeRange) {
+      case 'week':
+        dateFilter.createdAt = { $gte: new Date(now.setDate(now.getDate() - 7)) };
+        break;
+      case 'year':
+        dateFilter.createdAt = { $gte: new Date(now.setFullYear(now.getFullYear() - 1)) };
+        break;
+      case 'month':
+      default:
+        dateFilter.createdAt = { $gte: new Date(now.setMonth(now.getMonth() - 1)) };
+    }
+
+    // Count safe and unsafe URLs
+    const totalChecks = await URLHistory.countDocuments({ 
+      user: userId,
+      ...dateFilter
+    });
+    
+    const safeChecks = await URLHistory.countDocuments({ 
+      user: userId,
+      'result.isSafe': true,
+      ...dateFilter
+    });
+    
+    const unsafeChecks = totalChecks - safeChecks;
+    
+    // Get breakdown of unsafe URLs by type
+    const unsafeBreakdown = await URLHistory.aggregate([
+      { 
+        $match: { 
+          user: userId,
+          'result.isSafe': false,
+          ...dateFilter
+        } 
+      },
+      {
+        $group: {
+          _id: '$result.threatType',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Format the breakdown data
+    const formattedBreakdown = unsafeBreakdown.map(item => ({
+      threatType: item._id || 'Unknown',
+      count: item.count
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalChecks,
+        safeChecks,
+        unsafeChecks,
+        safePercentage: totalChecks > 0 ? (safeChecks / totalChecks) * 100 : 0,
+        unsafePercentage: totalChecks > 0 ? (unsafeChecks / totalChecks) * 100 : 0,
+        unsafeBreakdown: formattedBreakdown,
+        timeRange
+      }
+    });
+  } catch (error) {
+    console.error('Error generating user stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error generating statistics',
+      error: error.message
+    });
+  }
 };

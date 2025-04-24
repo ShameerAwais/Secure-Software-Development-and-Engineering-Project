@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URL History - Web Safety Scanner</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-color: #4285f4;
+      --primary-dark: #3367d6;
+      --success-color: #0f9d58;
+      --success-bg: #e8f5e9;
+      --error-color: #db4437;
+      --error-bg: #ffebee;
+      --warning-color: #f4b400;
+      --warning-bg: #fff8e1;
+      --neutral-color: #5f6368;
+      --surface-color: #ffffff;
+      --background-light: #f8f9fa;
+      --border-color: #dadce0;
+      --text-primary: #202124;
+      --text-secondary: #5f6368;
+      --text-on-primary: #ffffff;
+      --box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+      --border-radius: 8px;
+    }
+    
+    body {
+      font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      color: var(--text-primary);
+      background-color: var(--background-light);
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    header {
+      background-color: var(--primary-color);
+      color: var(--text-on-primary);
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: var(--box-shadow);
+    }
+    
+    header h1 {
+      margin: 0;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+    }
+    
+    header i {
+      margin-right: 12px;
+    }
+    
+    .card {
+      background-color: var(--surface-color);
+      border-radius: var(--border-radius);
+      box-shadow: var(--box-shadow);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    
+    .card h2 {
+      margin-top: 0;
+      color: var(--primary-color);
+      font-size: 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+    }
+    
+    .card h2 i {
+      margin-right: 8px;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .nav-link {
+      color: var(--primary-color);
+      text-decoration: none;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: background-color 0.2s;
+      display: flex;
+      align-items: center;
+    }
+    
+    .nav-link i {
+      margin-right: 8px;
+    }
+    
+    .nav-link:hover {
+      background-color: var(--background-light);
+      text-decoration: underline;
+    }
+    
+    .error-message {
+      color: var(--error-color);
+      background-color: var(--error-bg);
+      padding: 12px;
+      border-radius: var(--border-radius);
+      margin-bottom: 16px;
+      display: none;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    th {
+      background-color: var(--background-light);
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    
+    tr:hover {
+      background-color: var(--background-light);
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .status-safe {
+      background-color: var(--success-bg);
+      color: var(--success-color);
+    }
+    
+    .status-unsafe {
+      background-color: var(--error-bg);
+      color: var(--error-color);
+    }
+    
+    .action-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      background-color: var(--background-light);
+      color: var(--text-secondary);
+    }
+    
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    
+    .pagination-button {
+      background-color: var(--surface-color);
+      border: 1px solid var(--border-color);
+      color: var(--primary-color);
+      padding: 8px 12px;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .pagination-button:hover:not(:disabled) {
+      background-color: var(--background-light);
+    }
+    
+    .pagination-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .pagination-current {
+      background-color: var(--primary-color);
+      color: var(--text-on-primary);
+      border: none;
+    }
+    
+    .pagination-current:hover {
+      background-color: var(--primary-color) !important;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-box {
+      background-color: var(--surface-color);
+      border-radius: var(--border-radius);
+      padding: 16px;
+      box-shadow: var(--box-shadow);
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 28px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--primary-color);
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    
+    .time-filter {
+      margin-bottom: 16px;
+      display: flex;
+      gap: 8px;
+    }
+    
+    .time-button {
+      background-color: var(--surface-color);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    .time-button.active {
+      background-color: var(--primary-color);
+      color: var(--text-on-primary);
+      border-color: var(--primary-color);
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+    
+    .loading i {
+      font-size: 32px;
+      margin-bottom: 16px;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1><i class="fas fa-history"></i> URL History</h1>
+    </div>
+  </header>
+  
+  <main class="container">
+    <div class="nav-links">
+      <a href="profile.html" class="nav-link"><i class="fas fa-user-shield"></i> My Profile</a>
+      <a href="lists.html" class="nav-link"><i class="fas fa-list"></i> Allow/Block Lists</a>
+      <a href="options.html" class="nav-link"><i class="fas fa-cog"></i> Extension Settings</a>
+    </div>
+    
+    <div id="not-authenticated" class="card hidden">
+      <h2><i class="fas fa-exclamation-circle"></i> Not Authenticated</h2>
+      <p>You need to log in to view your URL history. Please open the extension popup and log in.</p>
+    </div>
+    
+    <div id="error-message" class="error-message"></div>
+    
+    <div id="history-content">
+      <div class="card">
+        <h2><i class="fas fa-chart-bar"></i> Statistics</h2>
+        
+        <div class="time-filter">
+          <button class="time-button" data-range="week">Last Week</button>
+          <button class="time-button active" data-range="month">Last Month</button>
+          <button class="time-button" data-range="year">Last Year</button>
+        </div>
+        
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-value" id="total-checks">0</div>
+            <div class="stat-label">URLs Checked</div>
+          </div>
+          
+          <div class="stat-box">
+            <div class="stat-value" id="safe-urls">0</div>
+            <div class="stat-label">Safe URLs</div>
+          </div>
+          
+          <div class="stat-box">
+            <div class="stat-value" id="unsafe-urls">0</div>
+            <div class="stat-label">Unsafe URLs</div>
+          </div>
+          
+          <div class="stat-box">
+            <div class="stat-value" id="safe-percentage">0%</div>
+            <div class="stat-label">Safety Rate</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h2><i class="fas fa-history"></i> Recent URL Checks</h2>
+        
+        <div id="loading" class="loading">
+          <i class="fas fa-circle-notch"></i>
+          <div>Loading your URL history...</div>
+        </div>
+        
+        <div id="empty-state" class="empty-state hidden">
+          <i class="fas fa-search"></i>
+          <p>No URL checks found in your history.</p>
+        </div>
+        
+        <div id="history-table-container" class="hidden">
+          <table id="history-table">
+            <thead>
+              <tr>
+                <th>URL</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="history-body">
+              <!-- History items will be added here -->
+            </tbody>
+          </table>
+          
+          <div class="pagination" id="pagination">
+            <!-- Pagination buttons will be added here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  
+  <script src="../js/history.js"></script>
+</body>
+</html>
