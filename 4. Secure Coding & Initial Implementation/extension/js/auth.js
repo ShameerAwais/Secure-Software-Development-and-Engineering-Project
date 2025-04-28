@@ -753,9 +753,10 @@ class AuthService {
    * Get user URL history
    * @param {number} page - Page number for pagination
    * @param {number} limit - Items per page
+   * @param {string} timeRange - Time range for filtering ('week', 'this-month', 'month', 'year')
    * @returns {Promise} - API response with user history
    */
-  async getUserHistory(page = 1, limit = 10) {
+  async getUserHistory(page = 1, limit = 10, timeRange = 'month') {
     if (!this.isAuthenticated) {
       return {
         success: false,
@@ -767,7 +768,13 @@ class AuthService {
       // Refresh token if needed before making the request
       await this.refreshTokenIfNeeded();
       
-      const response = await fetch(`${this.API_URL}/urls/user-history?page=${page}&limit=${limit}`, {
+      // Add timeRange to query parameters if provided
+      let queryParams = `page=${page}&limit=${limit}`;
+      if (timeRange) {
+        queryParams += `&timeRange=${timeRange}`;
+      }
+      
+      const response = await fetch(`${this.API_URL}/urls/user-history?${queryParams}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.token}`
@@ -779,7 +786,7 @@ class AuthService {
         const refreshed = await this.refreshAccessToken();
         if (refreshed) {
           // Retry the request with new token
-          return this.getUserHistory(page, limit);
+          return this.getUserHistory(page, limit, timeRange);
         }
       }
       

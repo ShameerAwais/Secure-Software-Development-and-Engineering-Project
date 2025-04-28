@@ -423,12 +423,42 @@ exports.getUserHistory = async (req, res) => {
     const userId = req.user.id;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
+    const timeRange = req.query.timeRange || 'month';
     const skip = (page - 1) * limit;
 
+    // Set date filter based on time range
+    const dateFilter = {};
+    const now = new Date();
+    
+    switch(timeRange) {
+      case 'week':
+        dateFilter.timestamp = { $gte: new Date(now.setDate(now.getDate() - 7)) };
+        break;
+      case 'this-month':
+        // Start of current month
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        dateFilter.timestamp = { $gte: startOfMonth };
+        break;
+      case 'year':
+        dateFilter.timestamp = { $gte: new Date(now.setFullYear(now.getFullYear() - 1)) };
+        break;
+      case 'month':
+      default:
+        // Past 30 days
+        dateFilter.timestamp = { $gte: new Date(now.setMonth(now.getMonth() - 1)) };
+    }
+
     // Query user history with pagination
-    const totalCount = await URLHistory.countDocuments({ user: userId });
-    const history = await URLHistory.find({ user: userId })
-      .sort({ createdAt: -1 })
+    const totalCount = await URLHistory.countDocuments({ 
+      user: userId,
+      ...dateFilter
+    });
+    
+    const history = await URLHistory.find({ 
+      user: userId,
+      ...dateFilter
+    })
+      .sort({ timestamp: -1 })
       .skip(skip)
       .limit(limit);
     
@@ -544,14 +574,14 @@ exports.getUserStats = async (req, res) => {
     
     switch(timeRange) {
       case 'week':
-        dateFilter.createdAt = { $gte: new Date(now.setDate(now.getDate() - 7)) };
+        dateFilter.timestamp = { $gte: new Date(now.setDate(now.getDate() - 7)) };
         break;
       case 'year':
-        dateFilter.createdAt = { $gte: new Date(now.setFullYear(now.getFullYear() - 1)) };
+        dateFilter.timestamp = { $gte: new Date(now.setFullYear(now.getFullYear() - 1)) };
         break;
       case 'month':
       default:
-        dateFilter.createdAt = { $gte: new Date(now.setMonth(now.getMonth() - 1)) };
+        dateFilter.timestamp = { $gte: new Date(now.setMonth(now.getMonth() - 1)) };
     }
 
     // Count safe and unsafe URLs

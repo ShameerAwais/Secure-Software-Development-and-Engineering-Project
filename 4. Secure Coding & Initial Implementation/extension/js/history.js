@@ -74,10 +74,10 @@ async function loadStats() {
       timeRange
     });
     
-    if (response && response.success) {
+    if (response && response.success && response.stats) {
       const stats = response.stats;
       
-      // Update stats display
+      // Update stats display with null checks for each value
       totalChecks.textContent = stats.totalChecks || 0;
       safeUrls.textContent = stats.safeUrls || 0;
       unsafeUrls.textContent = stats.unsafeUrls || 0;
@@ -89,10 +89,22 @@ async function loadStats() {
     } else {
       console.error('Error loading stats:', response?.message || 'Unknown error');
       showError(response?.message || 'Failed to load URL statistics');
+      
+      // Initialize to zero values as fallback
+      totalChecks.textContent = '0';
+      safeUrls.textContent = '0';
+      unsafeUrls.textContent = '0';
+      safePercentage.textContent = '0%';
     }
   } catch (error) {
     console.error('Error loading stats:', error);
     showError('Error connecting to authentication service');
+    
+    // Initialize to zero values as fallback
+    totalChecks.textContent = '0';
+    safeUrls.textContent = '0';
+    unsafeUrls.textContent = '0';
+    safePercentage.textContent = '0%';
   }
 }
 
@@ -107,7 +119,8 @@ async function loadHistory() {
     const response = await chrome.runtime.sendMessage({
       action: 'getUserHistory',
       page: currentPage,
-      limit: itemsPerPage
+      limit: itemsPerPage,
+      timeRange: timeRange
     });
     
     // Hide loading state
@@ -303,7 +316,13 @@ function handleTimeFilterChange(e) {
   
   // Update time range and reload data
   timeRange = newRange;
+  
+  // Reset to first page when changing time filter
+  currentPage = 1;
+  
+  // Reload both stats and history data with new time range
   loadStats();
+  loadHistory();
 }
 
 // Set up time filter button event listeners

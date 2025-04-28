@@ -20,13 +20,32 @@
   --border-radius: 8px;
 }
 
-body {
-  font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
+/* Override any conflicting popup styles */
+body, html {
+  width: auto !important; /* Override fixed width from popup.css */
+  min-width: 700px;
+  max-width: none !important;
   margin: 0;
   padding: 0;
   color: var(--text-primary);
   background-color: var(--background-light);
   line-height: 1.6;
+  font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
+}
+
+/* Specific body classes for different pages with the same wide layout */
+body.options-page,
+body.lists-page,
+body.history-page,
+body.profile-page {
+  width: auto !important; /* Override fixed width from popup.css */
+  min-width: 700px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-primary);
+  background-color: var(--background-light);
+  line-height: 1.6;
+  font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
 }
 
 .wrapper {

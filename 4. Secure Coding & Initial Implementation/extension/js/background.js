@@ -324,14 +324,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
             
           case "getUserHistory":
-            authService.getUserHistory(message.page, message.limit)
-              .then(result => sendResponse(result))
-              .catch(error => sendResponse({ success: false, error: error.message }));
+            authService.getUserHistory(message.page, message.limit, message.timeRange)
+              .then(result => {
+                if (result.success && result.data) {
+                  // Format the response to match what frontend expects
+                  sendResponse({
+                    success: true,
+                    history: result.data.history || [],
+                    pagination: {
+                      page: result.data.page,
+                      pages: result.data.totalPages,
+                      total: result.data.totalCount
+                    }
+                  });
+                } else {
+                  sendResponse(result);
+                }
+              })
+              .catch(error => sendResponse({ 
+                success: false, 
+                message: error.message,
+                history: [],
+                pagination: { page: 1, pages: 1, total: 0 }
+              }));
             break;
             
           case "getUserStats":
             authService.getUserStats(message.timeRange)
-              .then(result => sendResponse(result))
+              .then(result => {
+                if (result.success && result.data) {
+                  // Format the response to match what frontend expects
+                  sendResponse({
+                    success: true,
+                    stats: {
+                      totalChecks: result.data.totalChecks || 0,
+                      safeUrls: result.data.safeChecks || 0,
+                      unsafeUrls: result.data.unsafeChecks || 0,
+                      safePercentage: result.data.safePercentage || 0,
+                      unsafePercentage: result.data.unsafePercentage || 0,
+                      unsafeBreakdown: result.data.unsafeBreakdown || []
+                    }
+                  });
+                } else {
+                  sendResponse(result);
+                }
+              })
               .catch(error => sendResponse({ success: false, error: error.message }));
             break;
         }
