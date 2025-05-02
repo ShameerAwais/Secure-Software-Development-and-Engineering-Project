@@ -26,13 +26,13 @@ function checkCurrentPageSafety() {
         },
         (response) => {
           if (response && response.success) {
-            const { isSafe, threatType, analysisPhase, details, phishingScore } = response.data;
+            const { isSafe, threatType, analysisPhase, details } = response.data;
             
             console.log(`URL Check Result: ${isSafe ? 'Safe' : 'Unsafe'}, Phase: ${analysisPhase}`);
             
             if (!isSafe) {
               // Show warning for unsafe page with enhanced details
-              showWarningBanner(threatType, analysisPhase, details, phishingScore);
+              showWarningBanner(threatType, analysisPhase, details);
             }
           } else if (response && !response.success) {
             console.error("Error checking URL safety:", response.error);
@@ -224,7 +224,7 @@ function extractPageContent() {
 }
 
 // Function to show warning banner for unsafe sites with enhanced phishing information
-function showWarningBanner(threatType, analysisPhase, details, phishingScore) {
+function showWarningBanner(threatType, analysisPhase, details) {
   const banner = document.createElement("div");
   banner.style.position = "fixed";
   banner.style.top = "0";
@@ -248,14 +248,9 @@ function showWarningBanner(threatType, analysisPhase, details, phishingScore) {
     warningMessage += ` (${threatType})`;
   }
   
-  // Add phishing score if available
-  if (phishingScore !== undefined) {
-    detailsHtml += `<div style="margin-top: 5px;">Phishing Score: <strong>${phishingScore}/100</strong></div>`;
-  }
-  
   // Add specific details about the threat
   if (details) {
-    // Add top phishing indicators if available
+    // Add top threat indicators if available
     if (details.threatIndicators && details.threatIndicators.length > 0) {
       detailsHtml += `<div style="margin-top: 5px; font-size: 14px;">Detected issues:</div>`;
       detailsHtml += `<ul style="margin: 5px 0; padding-left: 20px; text-align: left; display: inline-block;">`;

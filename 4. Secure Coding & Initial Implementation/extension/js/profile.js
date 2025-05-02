@@ -447,6 +447,13 @@ async function loadStatistics(period) {
   periodYearBtn.classList.toggle('active', period === 'year');
   
   try {
+    // Fetch actual stats from the background script/server
+    // For now we'll simulate statistics data (replace this with actual API call when backend is ready)
+    const mockStats = getMockStatsData(period);
+    displayStatistics(mockStats);
+    
+    // The actual API call would look like this:
+    /*
     const response = await chrome.runtime.sendMessage({
       action: 'getUserStats',
       timeRange: period
@@ -464,12 +471,35 @@ async function loadStatistics(period) {
         await checkAuthStatus(); // This will update UI if needed
       }
     }
+    */
   } catch (error) {
     console.error('Error loading statistics:', error);
     resetStatistics('Network error');
   } finally {
     setStatsLoadingState(false);
   }
+}
+
+/**
+ * Generate mock statistics data for demonstration
+ * Remove this when connected to actual backend
+ */
+function getMockStatsData(period) {
+  // Scale factors based on period
+  const scaleFactor = period === 'week' ? 1 : period === 'month' ? 4 : 52;
+  
+  // Generate some reasonable numbers
+  const totalScans = Math.floor(Math.random() * 50) + 10 * scaleFactor;
+  const uniqueDomains = Math.floor(totalScans * 0.7);
+  const threats = Math.floor(Math.random() * 5) * scaleFactor;
+  const safeSites = totalScans - threats;
+  
+  return {
+    totalScans,
+    uniqueDomains,
+    safeSites,
+    threats
+  };
 }
 
 /**
@@ -481,6 +511,13 @@ async function loadOverviewStats() {
   }
   
   try {
+    // Use mock data for now (replace with actual API call when backend is ready)
+    const mockStats = getMockStatsData('month');
+    overviewSafeSites.textContent = mockStats.safeSites;
+    overviewThreats.textContent = mockStats.threats;
+    
+    // The actual API call would look like this:
+    /*
     const response = await chrome.runtime.sendMessage({
       action: 'getUserStats',
       timeRange: 'month'
@@ -493,6 +530,7 @@ async function loadOverviewStats() {
       overviewSafeSites.textContent = '-';
       overviewThreats.textContent = '-';
     }
+    */
   } catch (error) {
     console.error('Error loading overview statistics:', error);
     overviewSafeSites.textContent = '-';

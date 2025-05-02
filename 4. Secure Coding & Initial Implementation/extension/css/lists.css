@@ -33,6 +33,68 @@ header i {
   margin-right: 12px;
 }
 
+/* Safety Statistics styles - removed phishing score feature */
+.stat-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-box {
+  background-color: var(--background-light);
+  border-radius: var(--border-radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.stat-box.safe {
+  background-color: var(--success-bg);
+}
+
+.stat-box.unsafe {
+  background-color: var(--error-bg);
+}
+
+.stat-box.warning {
+  background-color: var(--warning-bg);
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 8px 0;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.stat-period {
+  margin-bottom: 8px;
+  display: flex;
+  gap: 16px;
+}
+
+.stat-period button {
+  background: none;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.stat-period button.active {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+   
 .card {
   background-color: var(--surface-color);
   border-radius: var(--border-radius);

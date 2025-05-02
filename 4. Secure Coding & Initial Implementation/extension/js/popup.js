@@ -89,66 +89,8 @@ async function checkCurrentPage() {
     // Wait for the response with timeout protection
     const response = await checkUrlPromise;
     
-    // Handle no response case
-    if (!response) {
-      updateStatus('unsafe', 'Error checking website', 'No response from security service');
-      return;
-    }
-    
-    // Handle no scanning option for unauthenticated users
-    if (response.noScanning) {
-      updateStatus('warning', 'Scanning Disabled', 'Please log in to enable website scanning');
-      checkButton.disabled = false; // Allow users to try again after logging in
-      return;
-    }
-    
-    // Handle successful response
-    if (response.success) {
-      const { isSafe, threatType, phishingScore, details } = response.data;
-      
-      if (isSafe) {
-        updateStatus('safe', 'Website appears to be safe', 'No threats detected');
-      } else if (isSafe === null) {
-        // For the case where we're in offline mode or couldn't determine
-        updateStatus('warning', 'Limited scan only', 'Only local checks were performed. Full security scan unavailable.');
-      } else {
-        // Create detailed message for unsafe site
-        let detailMessage = `Threat type: ${threatType || 'Unknown'}`;
-        
-        // Add phishing score if available
-        if (phishingScore !== undefined) {
-          detailMessage += `<br>Phishing Score: ${phishingScore}/100`;
-        }
-        
-        // Add specific threat indicators if available
-        if (details && details.threatIndicators && details.threatIndicators.length > 0) {
-          detailMessage += '<br><br>Detected issues:';
-          detailMessage += '<ul style="margin: 5px 0; padding-left: 15px;">';
-          details.threatIndicators.forEach(indicator => {
-            detailMessage += `<li>${indicator}</li>`;
-          });
-          detailMessage += '</ul>';
-        }
-        
-        updateStatus('unsafe', 'Potential security threat detected', detailMessage);
-      }
-      
-      // Show URL actions for authenticated users only
-      if (authState.isAuthenticated) {
-        urlActions.classList.remove('hidden');
-      }
-    } else {
-      // If falling back to local checks
-      if (response.fallback) {
-        updateStatus('warning', 'Limited scan only', 
-          'Security service unavailable. Only local checks were performed: ' + 
-          (response.error || 'Server connection failed'));
-      } else if (response.requiresAuth) {
-        updateStatus('warning', 'Authentication Required', 'Please log in to scan websites for security threats');
-      } else {
-        updateStatus('unsafe', 'Error checking website', response.error || 'Unknown error');
-      }
-    }
+    // Handle scan result
+    handleScanResult(response);
     
     // Check server status and update indicator
     checkServerStatus();
@@ -175,6 +117,52 @@ async function checkCurrentPage() {
     
     // Check server status on error too
     checkServerStatus();
+  }
+}
+
+// Function to handle scan result
+function handleScanResult(response) {
+  if (response && response.success) {
+    // Handle successful scan
+    const { isSafe, threatType, details } = response.data;
+    
+    if (isSafe) {
+      updateStatus('safe', 'Website appears to be safe', 'No threats detected');
+    } else if (isSafe === null) {
+      // For the case where we're in offline mode or couldn't determine
+      updateStatus('warning', 'Limited scan only', 'Only local checks were performed. Full security scan unavailable.');
+    } else {
+      // Create detailed message for unsafe site
+      let detailMessage = `Threat type: ${threatType || 'Unknown'}`;
+      
+      // Add specific threat indicators if available
+      if (details && details.threatIndicators && details.threatIndicators.length > 0) {
+        detailMessage += '<br><br>Detected issues:';
+        detailMessage += '<ul style="margin: 5px 0; padding-left: 15px;">';
+        details.threatIndicators.forEach(indicator => {
+          detailMessage += `<li>${indicator}</li>`;
+        });
+        detailMessage += '</ul>';
+      }
+      
+      updateStatus('unsafe', 'Potential security threat detected', detailMessage);
+    }
+    
+    // Show URL actions for authenticated users only
+    if (authState.isAuthenticated) {
+      urlActions.classList.remove('hidden');
+    }
+  } else {
+    // If falling back to local checks
+    if (response.fallback) {
+      updateStatus('warning', 'Limited scan only', 
+        'Security service unavailable. Only local checks were performed: ' + 
+        (response.error || 'Server connection failed'));
+    } else if (response.requiresAuth) {
+      updateStatus('warning', 'Authentication Required', 'Please log in to scan websites for security threats');
+    } else {
+      updateStatus('unsafe', 'Error checking website', response.error || 'Unknown error');
+    }
   }
 }
 

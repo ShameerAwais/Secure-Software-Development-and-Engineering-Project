@@ -612,6 +612,22 @@ async function analyzeUrl(url, pageContent = null) {
 }
 
 /**
+ * Process scan result and normalize format
+ * @param {Object} resultData Raw result data from server or local scan
+ * @returns {Object} Normalized result object 
+ */
+function processResultData(resultData) {
+  return {
+    isSafe: resultData.isSafe,
+    url: resultData.url,
+    threatType: resultData.threatType || null,
+    analysisPhase: resultData.analysisPhase || null,
+    details: resultData.details || null,
+    timestamp: resultData.timestamp || new Date().toISOString()
+  };
+}
+
+/**
  * Check URL with authenticated backend services
  * @param {string} url - URL to check
  * @param {object} contentAnalysis - Result of local content analysis
@@ -663,14 +679,7 @@ async function checkUrlWithAuthenticatedBackend(url, contentAnalysis = null) {
       
       return {
         success: true,
-        data: {
-          url,
-          isSafe: resultData.isSafe,
-          threatType: resultData.threatType,
-          analysisPhase: "BACKEND_FULL",
-          phishingScore: resultData.phishingScore,
-          details: resultData.details || {}
-        }
+        data: processResultData(resultData)
       };
     } else {
       // Handle error responses
@@ -780,14 +789,7 @@ async function checkUrlWithBackend(url, contentAnalysis = null) {
       
       return {
         success: true,
-        data: {
-          url,
-          isSafe: resultData.isSafe,
-          threatType: resultData.threatType,
-          analysisPhase: "BACKEND_BASIC",
-          phishingScore: resultData.phishingScore,
-          details: resultData.details || {}
-        }
+        data: processResultData(resultData)
       };
     } else {
       // Handle error responses
