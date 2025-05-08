@@ -1,4 +1,4 @@
-Anti-Phishing Browser Extension
+# PhishGuard
 
 A browser extension that helps protect users from phishing websites using secure architecture.
 
