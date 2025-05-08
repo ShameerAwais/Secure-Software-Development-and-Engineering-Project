@@ -1,4 +1,4 @@
-// Options page script for Web Safety Scanner
+// Options page script for PhishGuard
 
 // DOM elements
 const apiEndpointInput = document.getElementById('api-endpoint');

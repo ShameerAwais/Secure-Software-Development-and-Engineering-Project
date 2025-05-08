@@ -1,0 +1,41 @@
+/* Font Awesome - Essential Icons Only */
+.fas {
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  display: inline-block;
+  font-style: normal;
+  font-variant: normal;
+  text-rendering: auto;
+  line-height: 1;
+}
+
+/* Icon Definitions */
+.fa-shield-alt:before { content: "\f3ed"; }
+.fa-sync-alt:before { content: "\f2f1"; }
+.fa-check-circle:before { content: "\f058"; }
+.fa-exclamation-triangle:before { content: "\f071"; }
+.fa-exclamation-circle:before { content: "\f06a"; }
+.fa-flag:before { content: "\f024"; }
+.fa-user-circle:before { content: "\f2bd"; }
+.fa-user-shield:before { content: "\f505"; }
+.fa-history:before { content: "\f1da"; }
+.fa-list:before { content: "\f03a"; }
+.fa-sign-out-alt:before { content: "\f2f5"; }
+.fa-cog:before { content: "\f013"; }
+.fa-lock:before { content: "\f023"; }
+.fa-certificate:before { content: "\f0a3"; }
+.fa-lightbulb:before { content: "\f0eb"; }
+.fa-ban:before { content: "\f05e"; }
+
+/* Font Face */
+@font-face {
+  font-family: 'Font Awesome 5 Free';
+  font-style: normal;
+  font-weight: 900;
+  src: url('../fonts/fa-solid-900.woff2') format('woff2');
+}
+
+.fas {
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+} 

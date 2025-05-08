@@ -1,4 +1,4 @@
-// Popup script for Web Safety Scanner
+// Popup script for PhishGuard
 
 // DOM elements
 const statusContainer = document.getElementById('status-container');
@@ -125,15 +125,31 @@ function handleScanResult(response) {
   if (response && response.success) {
     // Handle successful scan
     const { isSafe, threatType, details } = response.data;
+    const source = details?.source;
     
     if (isSafe) {
-      updateStatus('safe', 'Website appears to be safe', 'No threats detected');
+      updateStatus(
+        'safe', 
+        'Website appears to be safe', 
+        source ? `No threats detected<br><small>Source: ${source}</small>` : 'No threats detected'
+      );
     } else if (isSafe === null) {
       // For the case where we're in offline mode or couldn't determine
-      updateStatus('warning', 'Limited scan only', 'Only local checks were performed. Full security scan unavailable.');
+      updateStatus(
+        'warning', 
+        'Limited scan only', 
+        source ? 
+          `Only local checks were performed. Full security scan unavailable.<br><small>Source: ${source}</small>` : 
+          'Only local checks were performed. Full security scan unavailable.'
+      );
     } else {
       // Create detailed message for unsafe site
       let detailMessage = `Threat type: ${threatType || 'Unknown'}`;
+      
+      // Add source information if available
+      if (source) {
+        detailMessage += `<br><small>Source: ${source}</small>`;
+      }
       
       // Add specific threat indicators if available
       if (details && details.threatIndicators && details.threatIndicators.length > 0) {
@@ -152,16 +168,31 @@ function handleScanResult(response) {
     if (authState.isAuthenticated) {
       urlActions.classList.remove('hidden');
     }
+
+    // Display AI analysis (if available)
+    displayAiAnalysis(response.data);
   } else {
     // If falling back to local checks
     if (response.fallback) {
-      updateStatus('warning', 'Limited scan only', 
-        'Security service unavailable. Only local checks were performed: ' + 
-        (response.error || 'Server connection failed'));
+      const source = response.data?.details?.source;
+      const sourceText = source ? `<br><small>Source: ${source}</small>` : '';
+      updateStatus(
+        'warning', 
+        'Limited scan only', 
+        `Security service unavailable. Only local checks were performed.${sourceText}<br><small>Error: ${response.error || 'Server connection failed'}</small>`
+      );
     } else if (response.requiresAuth) {
-      updateStatus('warning', 'Authentication Required', 'Please log in to scan websites for security threats');
+      updateStatus(
+        'warning', 
+        'Authentication Required', 
+        'Please log in to scan websites for security threats'
+      );
     } else {
-      updateStatus('unsafe', 'Error checking website', response.error || 'Unknown error');
+      updateStatus(
+        'unsafe', 
+        'Error checking website', 
+        `${response.error || 'Unknown error'}`
+      );
     }
   }
 }
@@ -184,6 +215,188 @@ function updateStatus(type, message, details) {
   statusContainer.querySelector('.status-icon i').className = `fas ${iconClass}`;
   statusMessage.textContent = message;
   statusDetails.innerHTML = details;
+}
+
+/**
+ * Display AI analysis results in the popup
+ * @param {Object} data - Scan result data with AI analysis
+ */
+function displayAiAnalysis(data) {
+  // Create AI analysis section if it doesn't exist
+  let aiAnalysisSection = document.querySelector('.ai-analysis');
+  if (!aiAnalysisSection) {
+    aiAnalysisSection = document.createElement('div');
+    aiAnalysisSection.className = 'ai-analysis';
+    
+    const heading = document.createElement('h2');
+    heading.innerHTML = '<i class="material-icons">psychology</i> Security Analysis';
+    aiAnalysisSection.appendChild(heading);
+    
+    document.querySelector('.container').appendChild(aiAnalysisSection);
+  } else {
+    // Clear existing content except heading
+    const heading = aiAnalysisSection.querySelector('h2');
+    aiAnalysisSection.innerHTML = '';
+    aiAnalysisSection.appendChild(heading);
+  }
+
+  // Check for Google Safe Browsing results first
+  if (data.details?.safeBrowsing || 
+      (data.details?.source && data.details.source.includes("Google Safe Browsing"))) {
+    
+    // Display Google Safe Browsing results
+    const safeBrowsingContainer = document.createElement('div');
+    safeBrowsingContainer.className = 'google-sb-result';
+    safeBrowsingContainer.style.marginBottom = '15px';
+    
+    const sbVerdict = document.createElement('div');
+    sbVerdict.style.padding = '10px';
+    sbVerdict.style.borderRadius = '4px';
+    sbVerdict.style.marginBottom = '15px';
+    
+    if (data.isSafe) {
+      sbVerdict.style.backgroundColor = '#e8f5e9';
+      sbVerdict.style.color = '#2e7d32';
+      sbVerdict.textContent = 'No known threats detected';
+    } else {
+      sbVerdict.style.backgroundColor = '#ffebee';
+      sbVerdict.style.color = '#c62828';
+      sbVerdict.textContent = `Threat detected: ${data.threatType || 'Malicious website'}`;
+    }
+    
+    safeBrowsingContainer.appendChild(sbVerdict);
+    aiAnalysisSection.appendChild(safeBrowsingContainer);
+    
+    // If Google Safe Browsing found it unsafe, don't show ML score
+    if (!data.isSafe) return;
+  }
+  
+  // Check if we have ML score data
+  if (!data.mlScore && !data.phishingScore) {
+    return; // No AI analysis data available
+  }
+  
+  // Use whatever score is available
+  const score = data.mlScore || data.phishingScore || 0;
+  
+  // Create phishing score gauge
+  const scoreContainer = document.createElement('div');
+  scoreContainer.className = 'ai-score-container';
+  
+  // Calculate safe percentage for the gauge
+  const safePercent = 100 - score;
+  
+  // Create gauge element
+  const scoreGauge = document.createElement('div');
+  scoreGauge.className = 'ai-score-gauge';
+  scoreGauge.style.setProperty('--safe-percent', `${safePercent}%`);
+  
+  const scoreValue = document.createElement('div');
+  scoreValue.className = 'ai-score-value';
+  scoreValue.textContent = score;
+  scoreGauge.appendChild(scoreValue);
+  
+  // Create score details
+  const scoreDetails = document.createElement('div');
+  scoreDetails.className = 'ai-score-details';
+  
+  const scoreLabel = document.createElement('div');
+  scoreLabel.className = 'ai-score-label';
+  
+  // Determine risk level based on the score
+  let riskLevel, scoreDescription;
+  if (score < 30) {
+    riskLevel = 'Low Risk';
+    scoreDescription = 'Our ML model indicates this site is likely legitimate.';
+  } else if (score < 70) {
+    riskLevel = 'Medium Risk';
+    scoreDescription = 'Some suspicious patterns detected, exercise caution.';
+  } else {
+    riskLevel = 'High Risk';
+    scoreDescription = 'Multiple phishing indicators detected by our ML model.';
+  }
+  
+  scoreLabel.textContent = `ML Phishing Score: ${riskLevel}`;
+  
+  const scoreDesc = document.createElement('div');
+  scoreDesc.className = 'ai-score-description';
+  scoreDesc.textContent = scoreDescription;
+  
+  scoreDetails.appendChild(scoreLabel);
+  scoreDetails.appendChild(scoreDesc);
+  
+  // Assemble score container
+  scoreContainer.appendChild(scoreGauge);
+  scoreContainer.appendChild(scoreDetails);
+  aiAnalysisSection.appendChild(scoreContainer);
+  
+  // Add contributing features if available
+  if (data.importantFeatures && data.importantFeatures.length > 0) {
+    const featuresContainer = document.createElement('div');
+    featuresContainer.className = 'ai-features';
+    
+    // Add heading for features
+    const featuresHeading = document.createElement('div');
+    featuresHeading.style.fontSize = '14px';
+    featuresHeading.style.fontWeight = '500';
+    featuresHeading.style.marginBottom = '10px';
+    featuresHeading.textContent = 'Top Contributing Factors';
+    featuresContainer.appendChild(featuresHeading);
+    
+    // Add each feature
+    data.importantFeatures.forEach(feature => {
+      const featureElement = document.createElement('div');
+      featureElement.className = 'ai-feature';
+      
+      // Icon based on contribution value
+      const iconType = parseFloat(feature.contribution) > 0.05 ? 'warning' : 'info';
+      
+      featureElement.innerHTML = `
+        <div class="ai-feature-icon">
+          <i class="material-icons">${iconType}</i>
+        </div>
+        <div class="ai-feature-name">${feature.name}</div>
+        <div class="ai-feature-confidence">
+          <div class="ai-feature-confidence-bar" 
+               style="width: ${Math.min(parseFloat(feature.contribution) * 200, 100)}%"></div>
+        </div>
+        <div class="ai-feature-confidence-text">${Math.round(parseFloat(feature.contribution) * 100)}%</div>
+      `;
+      
+      featuresContainer.appendChild(featureElement);
+    });
+    
+    aiAnalysisSection.appendChild(featuresContainer);
+  } else if (data.details?.threatIndicators && data.details.threatIndicators.length > 0) {
+    // Add threat indicators as features
+    const featuresContainer = document.createElement('div');
+    featuresContainer.className = 'ai-features';
+    
+    // Add heading for features
+    const featuresHeading = document.createElement('div');
+    featuresHeading.style.fontSize = '14px';
+    featuresHeading.style.fontWeight = '500';
+    featuresHeading.style.marginBottom = '10px';
+    featuresHeading.textContent = 'Detected Issues';
+    featuresContainer.appendChild(featuresHeading);
+    
+    // Add each indicator as a feature
+    data.details.threatIndicators.forEach(indicator => {
+      const featureElement = document.createElement('div');
+      featureElement.className = 'ai-feature';
+      
+      featureElement.innerHTML = `
+        <div class="ai-feature-icon">
+          <i class="material-icons">warning</i>
+        </div>
+        <div class="ai-feature-name" style="flex: 1">${indicator}</div>
+      `;
+      
+      featuresContainer.appendChild(featureElement);
+    });
+    
+    aiAnalysisSection.appendChild(featuresContainer);
+  }
 }
 
 // Function to check server status and update indicator

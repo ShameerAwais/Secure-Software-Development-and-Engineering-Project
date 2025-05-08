@@ -1,849 +1,1301 @@
-// Background service worker for Web Safety Scanner
-const API_BASE_URL = "http://localhost:5001/api/v1";
-const FALLBACK_API_URLS = [
-  "http://localhost:5001/api/v1",
-  "http://localhost:3000/api/v1", // Alternative local port
-  "https://api.websafetyscanner.example.com/api/v1" // Example production URL
-];
+/**
+ * Background Script
+ * 
+ * This script runs in the extension's background and coordinates the
+ * phishing detection system:
+ * 1. Receives data from content scripts monitoring web pages
+ * 2. Communicates with the backend API for NLP analysis
+ * 3. Makes final phishing determinations combining all signals
+ * 4. Manages user notifications and protection responses
+ */
 
-// Import auth service using ES module import
-import authService from './auth.js';
-
-// Initialize extension settings
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('Extension installed/updated - initializing settings');
-  
-  // Store default API URL and fallback options with improved timeout settings
-  chrome.storage.local.set({
-    apiUrl: API_BASE_URL,
-    fallbackApiUrls: FALLBACK_API_URLS,
-    lastServerStatus: {
-      isAvailable: false,
-      lastChecked: null,
-      activeUrl: API_BASE_URL
-    },
-    autoFallback: true, // Enable auto-fallback to alternative servers
-    offlineMode: false, // Start in online mode by default
-    apiTimeouts: {
-      safeBrowsing: 5000,  // 5 second timeout for Safe Browsing API
-      backend: 8000,       // 8 second timeout for backend server
-      maxRetries: 1        // Only retry once to avoid long waits
-    }
-  }, () => {
-    console.log('Settings initialized with API URL:', API_BASE_URL);
-    // Run an initial server availability check
-    checkServerAvailability();
-  });
-});
-
-// Check if the server is available - returns a promise
-async function checkServerAvailability() {
-  try {
-    const settings = await chrome.storage.local.get([
-      "apiUrl", 
-      "fallbackApiUrls", 
-      "lastServerStatus", 
-      "autoFallback", 
-      "offlineMode"
-    ]);
-    
-    // If offline mode is enabled, don't check server
-    if (settings.offlineMode) {
-      console.log("Offline mode enabled, skipping server check");
-      return false;
-    }
-    
-    const currentApiUrl = settings.apiUrl || API_BASE_URL;
-    let isAvailable = false;
-    let activeUrl = currentApiUrl;
-    
-    // Try the current API URL first
-    try {
-      console.log(`Checking server availability: ${currentApiUrl}`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-      
-      const response = await fetch(`${currentApiUrl}/status`, {
-        method: "GET",
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        isAvailable = true;
-        console.log("Primary server is available");
-      }
-    } catch (error) {
-      console.warn(`Primary server unavailable: ${error.message}`);
-      
-      // If auto-fallback is enabled, try fallback URLs
-      if (settings.autoFallback && settings.fallbackApiUrls && settings.fallbackApiUrls.length > 0) {
-        console.log("Trying fallback servers...");
-        
-        // Try each fallback URL
-        for (const fallbackUrl of settings.fallbackApiUrls) {
-          if (fallbackUrl === currentApiUrl) continue; // Skip the current URL
-          
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
-            
-            const response = await fetch(`${fallbackUrl}/status`, {
-              method: "GET",
-              signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (response.ok) {
-              isAvailable = true;
-              activeUrl = fallbackUrl;
-              
-              // Update active API URL since fallback is working
-              await chrome.storage.local.set({ apiUrl: fallbackUrl });
-              console.log(`Switched to fallback server: ${fallbackUrl}`);
-              break;
-            }
-          } catch (fallbackError) {
-            console.warn(`Fallback server ${fallbackUrl} unavailable: ${fallbackError.message}`);
-          }
-        }
-      }
-    }
-    
-    // Update server status
-    const serverStatus = {
-      isAvailable,
-      lastChecked: new Date().toISOString(),
-      activeUrl
-    };
-    
-    await chrome.storage.local.set({ lastServerStatus: serverStatus });
-    console.log(`Server availability: ${isAvailable ? 'Online' : 'Offline'}`);
-    console.log(`Active API URL: ${activeUrl}`);
-    
-    return isAvailable;
-  } catch (error) {
-    console.error("Error checking server availability:", error);
-    return false;
+// Configuration
+const API_CONFIG = {
+  baseUrl: 'http://localhost:5001/api/v1',
+  endpoints: {
+    analyzeContent: '/urls/user-check',
+    checkUrl: '/urls/check',
+    reportPhishing: '/urls/user-action',
+    login: '/auth/login',
+    register: '/auth/register',
+    logout: '/auth/logout',
+    profile: '/auth/profile',
+    lists: '/auth/lists'
+  },
+  headers: {
+    'Content-Type': 'application/json'
   }
+};
+
+// Track analysis results across tabs
+const tabAnalysisData = {};
+const phishingAlerts = {};
+const safeUrls = new Set();
+const suspiciousUrls = new Set();
+const confirmedPhishingUrls = new Set();
+
+// Initialize extension
+chrome.runtime.onInstalled.addListener(initializeExtension);
+setupListeners();
+
+/**
+ * Initialize the extension
+ */
+function initializeExtension() {
+  console.log('[PhishGuard] Extension initialized');
+  
+  // Reset extension state
+  resetExtensionState();
+  
+  // Set default badge color
+  chrome.action.setBadgeBackgroundColor({ color: '#5D87E8' });
 }
 
-// Listen for messages from content script or popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // URL scanning - check auth first
-  if (message.action === "checkUrl") {
-    // Check if user is authenticated
-    authService.loadAuthState().then(state => {
-      if (!state.isAuthenticated) {
-        // User is not authenticated, return a "no scanning" response
-        sendResponse({
-          success: true, // Changed to true so UI can handle it properly
-          noScanning: true, // New flag to indicate no scanning option
-          requiresAuth: true,
-          data: {
-            url: message.url,
-            isSafe: null,
-            threatType: null,
-            analysisPhase: "NO_SCANNING",
-            details: {
-              message: "Scanning disabled. Please log in to use the scanning feature."
-            }
-          }
+/**
+ * Set up all message and event listeners
+ */
+function setupListeners() {
+  // Listen for messages from content scripts
+  chrome.runtime.onMessage.addListener(handleMessages);
+  
+  // Listen for tab updates to reset data and start scans
+  chrome.tabs.onUpdated.addListener(handleTabUpdated);
+  
+  // Listen for tab removal to clean up data
+  chrome.tabs.onRemoved.addListener(handleTabRemoved);
+}
+
+/**
+ * Handle messages from content scripts
+ * @param {Object} message - Message data
+ * @param {Object} sender - Message sender
+ * @param {Function} sendResponse - Response function
+ * @returns {boolean} Whether response will be async
+ */
+function handleMessages(message, sender, sendResponse) {
+  // Handle messages from popup and content scripts
+  if (message.action === 'getAuthStatus') {
+    // Get auth state from storage
+    chrome.storage.local.get(['isAuthenticated', 'user'], (result) => {
+      sendResponse({
+        success: true,
+        isAuthenticated: result.isAuthenticated || false,
+        user: result.user || null
+      });
+    });
+    return true; // Indicate async response
+  }
+
+  if (message.action === 'login') {
+    // Make login request to backend
+    fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.login, {
+      method: 'POST',
+      headers: API_CONFIG.headers,
+      body: JSON.stringify(message.credentials),
+      credentials: 'include'
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // Save auth state to storage
+        chrome.storage.local.set({
+          isAuthenticated: true,
+          user: data.user,
+          token: data.token,
+          refreshToken: data.refreshToken,
+          tokenExpiry: data.tokenExpiry
         });
-      } else {
-        // User is authenticated, proceed with URL analysis
-        analyzeUrl(message.url, message.pageContent)
-          .then(result => sendResponse(result))
-          .catch(error => sendResponse({ success: false, error: error.message }));
       }
-    }).catch(error => {
-      console.error("Error checking auth state:", error);
-      sendResponse({ success: false, error: "Error checking authentication status" });
-    });
-    
-    return true; // Required for async sendResponse
-  }
-  
-  // New action to open extension popup from content script
-  if (message.action === "openPopup") {
-    // Can't directly open the popup, but we can create a notification that when clicked will focus on the extension
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: '/images/icon128.jpg',
-      title: 'Web Safety Scanner',
-      message: 'Click here to open the Web Safety Scanner and log in',
-      priority: 2
-    }, (notificationId) => {
-      // Add listener for notification click
-      chrome.notifications.onClicked.addListener(function notificationClickHandler(clickedId) {
-        if (clickedId === notificationId) {
-          // Try to open the popup programmatically
-          chrome.action.openPopup();
-          // Remove this specific listener after it's used
-          chrome.notifications.onClicked.removeListener(notificationClickHandler);
-        }
-      });
-    });
-    
-    sendResponse({ success: true });
-    return true;
-  }
-  
-  // Server availability check
-  if (message.action === "checkServerAvailability") {
-    checkServerAvailability()
-      .then(isAvailable => sendResponse({ success: true, isAvailable }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // Required for async sendResponse
-  }
-  
-  // Authentication requests
-  if (message.action === "register") {
-    console.log("Registration request received in background.js:", { 
-      email: message.userData.email,
-      name: message.userData.name,
-      // Don't log password
-    });
-    
-    // Check server availability first
-    checkServerAvailability().then(isAvailable => {
-      if (!isAvailable) {
-        console.warn("Server unavailable, registration might fail");
-      }
-      
-      // Make sure authService has the current API URL
-      return chrome.storage.local.get(["apiUrl"]);
-    })
-    .then(result => {
-      console.log("Using API URL for registration:", result.apiUrl || API_BASE_URL);
-      
-      // Make sure to wait for the auth state to load
-      return authService.loadAuthState();
-    })
-    .then(() => {
-      // Now perform registration
-      return authService.register(message.userData);
-    })
-    .then(result => {
-      console.log("Registration result:", result);
-      sendResponse(result);
+      sendResponse(data);
     })
     .catch(error => {
-      console.error("Registration error in background.js:", error);
-      sendResponse({ 
-        success: false, 
-        error: error.message,
-        message: "Error during registration: " + error.message 
+      console.error('Login error:', error);
+      sendResponse({
+        success: false,
+        message: 'Error connecting to authentication service'
       });
     });
-    return true;
+    return true; // Indicate async response
   }
-  
-  if (message.action === "login") {
-    console.log("Login request received in background.js:", { 
-      email: message.credentials.email,
-      // Don't log password
-    });
-    
-    // Check server availability first
-    checkServerAvailability().then(isAvailable => {
-      if (!isAvailable) {
-        console.warn("Server unavailable, login might fail");
+
+  if (message.action === 'register') {
+    // Make register request to backend
+    fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.register, {
+      method: 'POST',
+      headers: API_CONFIG.headers,
+      body: JSON.stringify(message.userData),
+      credentials: 'include'
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
       }
-      
-      // Make sure authService has the current API URL
-      return chrome.storage.local.get(["apiUrl"]);
+      return response.json();
     })
-    .then(result => {
-      console.log("Using API URL for login:", result.apiUrl || API_BASE_URL);
-      
-      // Make sure to wait for the auth state to load
-      return authService.loadAuthState();
-    })
-    .then(() => {
-      // Now perform login
-      return authService.login(message.credentials);
-    })
-    .then(result => {
-      console.log("Login result:", result);
-      sendResponse(result);
+    .then(data => {
+      if (data.success) {
+        // Save auth state to storage
+        chrome.storage.local.set({
+          isAuthenticated: true,
+          user: data.user,
+          token: data.token,
+          refreshToken: data.refreshToken,
+          tokenExpiry: data.tokenExpiry
+        });
+      }
+      sendResponse(data);
     })
     .catch(error => {
-      console.error("Login error in background.js:", error);
-      sendResponse({ 
-        success: false, 
-        error: error.message,
-        message: "Error during login: " + error.message 
+      console.error('Registration error:', error);
+      sendResponse({
+        success: false,
+        message: `Error creating account: ${error.message}`
       });
     });
-    return true;
+    return true; // Indicate async response
   }
-  
-  if (message.action === "logout") {
-    authService.logout()
-      .then(result => sendResponse(result))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
-  
-  // Profile and account features - ensure they require authentication
-  if (["getProfile", "updatePreferences", "updateAccount", "updateLists", "getUserHistory", "getUserStats"].includes(message.action)) {
-    // First check if user is authenticated
-    authService.loadAuthState().then(state => {
-      if (!state.isAuthenticated) {
+
+  if (message.action === 'refreshProfile') {
+    // Get stored token
+    chrome.storage.local.get(['token'], (result) => {
+      if (!result.token) {
         sendResponse({
           success: false,
-          requiresAuth: true,
-          message: "Authentication required to access this feature"
+          message: 'Not authenticated'
         });
-      } else {
-        // User is authenticated, proceed with the requested action
-        switch (message.action) {
-          case "getProfile":
-            authService.getProfile()
-              .then(result => sendResponse(result))
-              .catch(error => sendResponse({ success: false, error: error.message }));
-            break;
-            
-          case "updatePreferences":
-            authService.updatePreferences(message.preferences)
-              .then(result => sendResponse(result))
-              .catch(error => sendResponse({ success: false, error: error.message }));
-            break;
-            
-          case "updateAccount":
-            handleAccountUpdate(message, sendResponse);
-            break;
-            
-          case "updateLists":
-            authService.updateLists(message.listAction, message.listType, message.url)
-              .then(result => sendResponse(result))
-              .catch(error => sendResponse({ success: false, error: error.message }));
-            break;
-            
-          case "getUserHistory":
-            authService.getUserHistory(message.page, message.limit, message.timeRange)
-              .then(result => {
-                if (result.success && result.data) {
-                  // Format the response to match what frontend expects
-                  sendResponse({
-                    success: true,
-                    history: result.data.history || [],
-                    pagination: {
-                      page: result.data.page,
-                      pages: result.data.totalPages,
-                      total: result.data.totalCount
-                    }
-                  });
-                } else {
-                  sendResponse(result);
-                }
-              })
-              .catch(error => sendResponse({ 
-                success: false, 
-                message: error.message,
-                history: [],
-                pagination: { page: 1, pages: 1, total: 0 }
-              }));
-            break;
-            
-          case "getUserStats":
-            authService.getUserStats(message.timeRange)
-              .then(result => {
-                if (result.success && result.data) {
-                  // Format the response to match what frontend expects
-                  sendResponse({
-                    success: true,
-                    stats: {
-                      totalChecks: result.data.totalChecks || 0,
-                      safeUrls: result.data.safeChecks || 0,
-                      unsafeUrls: result.data.unsafeChecks || 0,
-                      safePercentage: result.data.safePercentage || 0,
-                      unsafePercentage: result.data.unsafePercentage || 0,
-                      unsafeBreakdown: result.data.unsafeBreakdown || []
-                    }
-                  });
-                } else {
-                  sendResponse(result);
-                }
-              })
-              .catch(error => sendResponse({ success: false, error: error.message }));
-            break;
-        }
+        return;
       }
-    }).catch(error => {
-      console.error(`Error checking auth state for ${message.action}:`, error);
-      sendResponse({ success: false, error: "Error checking authentication status" });
-    });
-    
-    return true; // Required for async sendResponse
-  }
-  
-  if (message.action === "getAuthStatus") {
-    console.log("Auth status request received");
-    
-    authService.loadAuthState()
-      .then(state => {
-        console.log("Auth state loaded:", {
-          isAuthenticated: state.isAuthenticated,
-          user: state.user ? state.user.email : null
-        });
-        
-        sendResponse({
-          success: true,
-          isAuthenticated: state.isAuthenticated,
-          user: state.user
-        });
+
+      const url = API_CONFIG.baseUrl + API_CONFIG.endpoints.profile;
+      console.log('Fetching profile from:', url);
+      
+      // Make profile request to backend
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          ...API_CONFIG.headers,
+          'Authorization': `Bearer ${result.token}`
+        },
+        credentials: 'include'
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          // Update stored user data
+          chrome.storage.local.set({
+            user: data.user
+          });
+          sendResponse({
+            success: true,
+            user: data.user
+          });
+        } else {
+          sendResponse({
+            success: false,
+            message: data.message || 'Failed to refresh profile'
+          });
+        }
       })
       .catch(error => {
-        console.error("Auth status error:", error);
-        sendResponse({ 
-          success: false, 
-          error: error.message,
-          isAuthenticated: false
+        console.error('Profile refresh error:', error);
+        sendResponse({
+          success: false,
+          message: `Error refreshing profile data: ${error.message}`
         });
       });
-    return true;
+    });
+    return true; // Indicate async response
   }
-});
 
-// Helper function to handle account update
-function handleAccountUpdate(message, sendResponse) {
-  console.log("Account update request received in background.js:", { 
-    name: message.accountUpdate.name,
-    passwordUpdate: message.accountUpdate.currentPassword ? true : false
-  });
-  
-  // Check server availability first
-  checkServerAvailability().then(isAvailable => {
-    if (!isAvailable) {
-      console.warn("Server unavailable, account update might fail");
-      return { success: false, message: "Server is unavailable" };
-    }
-    
-    // Make sure authService has the current API URL
-    return chrome.storage.local.get(["apiUrl"]);
-  })
-  .then(result => {
-    console.log("Using API URL for account update:", result.apiUrl || API_BASE_URL);
-    
-    if (result.success === false) {
-      return result; // Pass through the error from server availability check
-    }
-    
-    // Make sure to wait for the auth state to load
-    return authService.loadAuthState();
-  })
-  .then((result) => {
-    if (result && result.success === false) {
-      return result; // Pass through the error
-    }
-    
-    // Create updateAccountData function in auth service if it doesn't exist yet
-    if (!authService.updateAccountData) {
-      authService.updateAccountData = async function(accountData) {
-        if (!this.isAuthenticated) {
-          return {
-            success: false,
-            message: 'Not authenticated'
-          };
+  if (message.action === 'getProfile') {
+    // Get stored token
+    chrome.storage.local.get(['token', 'user'], (result) => {
+      if (!result.token) {
+        sendResponse({
+          success: false,
+          message: 'Not authenticated'
+        });
+        return;
+      }
+
+      // First check if we have a cached user profile and it's recent
+      if (result.user && result.user.lastFetched && 
+          (Date.now() - result.user.lastFetched < 300000)) { // 5 minutes cache
+        console.log('Using cached profile data');
+        sendResponse({
+          success: true,
+          user: result.user
+        });
+        return;
+      }
+
+      const url = API_CONFIG.baseUrl + API_CONFIG.endpoints.profile;
+      console.log('Fetching fresh profile from:', url);
+      
+      // Make profile request to backend
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          ...API_CONFIG.headers,
+          'Authorization': `Bearer ${result.token}`
+        },
+        credentials: 'include'
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        
-        try {
-          const response = await fetch(`${this.API_URL}/auth/update-account`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.token}`
-            },
-            body: JSON.stringify(accountData)
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          // Add timestamp to user data
+          const userData = {
+            ...data.user,
+            lastFetched: Date.now()
+          };
+          
+          // Update stored user data
+          chrome.storage.local.set({
+            user: userData
           });
           
-          const data = await response.json();
-          
-          if (data.success) {
-            // Update local user data
-            this.user = {
-              ...this.user,
-              name: data.user.name,
-              email: data.user.email
-            };
-            
-            await this.saveAuthState();
-          }
-          
-          return data;
-        } catch (error) {
-          console.error('Update account error:', error);
-          return {
+          sendResponse({
+            success: true,
+            user: userData
+          });
+        } else {
+          sendResponse({
             success: false,
-            message: 'Network or server error updating account'
-          };
+            message: data.message || 'Failed to get profile data'
+          });
         }
-      };
-    }
-    
-    // Now perform account update
-    return authService.updateAccountData(message.accountUpdate);
-  })
-  .then(result => {
-    console.log("Account update result:", result);
-    sendResponse(result);
-  })
-  .catch(error => {
-    console.error("Account update error in background.js:", error);
-    sendResponse({ 
-      success: false, 
-      error: error.message,
-      message: "Error during account update: " + error.message 
+      })
+      .catch(error => {
+        console.error('Profile fetch error:', error);
+        
+        // If we have cached data, return it as fallback
+        if (result.user) {
+          sendResponse({
+            success: true,
+            user: result.user,
+            message: 'Using cached profile data (fetch failed)'
+          });
+        } else {
+          sendResponse({
+            success: false,
+            message: `Error getting profile data: ${error.message}`
+          });
+        }
+      });
     });
-  });
-}
+    return true; // Indicate async response
+  }
 
-// URL Analyzer function - first step in the architecture
-async function analyzeUrl(url, pageContent = null) {
-  // Ensure user is authenticated
-  const authState = await authService.loadAuthState();
-  if (!authState.isAuthenticated) {
-    return {
-      success: false,
-      requiresAuth: true,
-      data: {
-        url,
-        isSafe: null,
-        threatType: null,
-        analysisPhase: "AUTH_REQUIRED",
-        details: {
-          message: "Authentication required to analyze URLs"
-        }
+  if (message.action === 'getLists') {
+    // Get stored token
+    chrome.storage.local.get(['token'], (result) => {
+      if (!result.token) {
+        sendResponse({
+          success: false,
+          message: 'Not authenticated'
+        });
+        return;
       }
-    };
+
+      const url = API_CONFIG.baseUrl + API_CONFIG.endpoints.lists;
+      console.log('Fetching lists from:', url);
+      
+      // Make lists request to backend
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          ...API_CONFIG.headers,
+          'Authorization': `Bearer ${result.token}`
+        },
+        credentials: 'include'
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          // Store lists data
+          chrome.storage.local.set({
+            allowList: data.allowList || [],
+            blockList: data.blockList || []
+          });
+          sendResponse({
+            success: true,
+            allowList: data.allowList || [],
+            blockList: data.blockList || []
+          });
+        } else {
+          sendResponse({
+            success: false,
+            message: data.message || 'Failed to load lists'
+          });
+        }
+      })
+      .catch(error => {
+        console.error('Lists loading error:', error);
+        sendResponse({
+          success: false,
+          message: `Error loading lists: ${error.message}`
+        });
+      });
+    });
+    return true; // Indicate async response
+  }
+
+  if (message.action === 'updateLists') {
+    // Get stored token
+    chrome.storage.local.get(['token'], (result) => {
+      if (!result.token) {
+        sendResponse({
+          success: false,
+          message: 'Not authenticated'
+        });
+        return;
+      }
+
+      const url = `${API_CONFIG.baseUrl}/lists/${message.listType}`;
+      console.log(`${message.listAction} to ${message.listType}:`, url, message.url);
+      
+      // Determine HTTP method based on action
+      const method = message.listAction === 'add' ? 'POST' : 'DELETE';
+      
+      // Make request to backend
+      fetch(url, {
+        method: method,
+        headers: {
+          ...API_CONFIG.headers,
+          'Authorization': `Bearer ${result.token}`
+        },
+        body: JSON.stringify({ url: message.url }),
+        credentials: 'include'
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          // Update stored lists
+          chrome.storage.local.get([message.listType], (listResult) => {
+            const currentList = listResult[message.listType] || [];
+            let updatedList = [...currentList];
+            
+            if (message.listAction === 'add' && !currentList.includes(message.url)) {
+              updatedList.push(message.url);
+            } else if (message.listAction === 'remove') {
+              updatedList = currentList.filter(item => item !== message.url);
+            }
+            
+            const updateObj = {};
+            updateObj[message.listType] = updatedList;
+            chrome.storage.local.set(updateObj);
+          });
+          
+          sendResponse({
+            success: true,
+            message: `${message.url} ${message.listAction === 'add' ? 'added to' : 'removed from'} ${message.listType}`
+          });
+        } else {
+          sendResponse({
+            success: false,
+            message: data.message || `Failed to ${message.listAction} to ${message.listType}`
+          });
+        }
+      })
+      .catch(error => {
+        console.error(`Error updating ${message.listType}:`, error);
+        sendResponse({
+          success: false,
+          message: `Error updating ${message.listType}: ${error.message}`
+        });
+      });
+    });
+    return true; // Indicate async response
+  }
+
+  if (message.action === 'logout') {
+    // Get stored token
+    chrome.storage.local.get(['token'], (result) => {
+      const token = result.token;
+      
+      // Clear auth state first (even if API call fails)
+      chrome.storage.local.remove(['isAuthenticated', 'user', 'token', 'refreshToken', 'tokenExpiry', 'allowList', 'blockList'], () => {
+        console.log('Cleared auth state from storage');
+      });
+      
+      // If we have a token, try to properly logout on server
+      if (token) {
+        fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.logout, {
+          method: 'POST',
+          headers: {
+            ...API_CONFIG.headers,
+            'Authorization': `Bearer ${token}`
+          },
+          credentials: 'include'
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          sendResponse({
+            success: true,
+            message: 'Logged out successfully'
+          });
+        })
+        .catch(error => {
+          console.error('Logout API error:', error);
+          // Still consider logout successful even if API call fails
+          sendResponse({
+            success: true,
+            message: 'Logged out locally'
+          });
+        });
+      } else {
+        // No token means we're not logged in anyway
+        sendResponse({
+          success: true,
+          message: 'Not logged in'
+        });
+      }
+    });
+    return true; // Indicate async response
+  }
+
+  if (message.action === 'checkServerAvailability') {
+    // Check if server is available by making a request to the health endpoint
+    fetch('http://localhost:5001/health')
+      .then(response => {
+        if (response.ok) {
+          sendResponse({
+            success: true,
+            isAvailable: true
+          });
+        } else {
+          sendResponse({
+            success: true,
+            isAvailable: false
+          });
+        }
+      })
+      .catch(error => {
+        console.error('Server availability check failed:', error);
+        sendResponse({
+          success: true,
+          isAvailable: false
+        });
+      });
+    return true; // Indicate async response
+  }
+
+  if (message.action === 'checkUrl') {
+    const url = message.url;
+    try {
+      // Parse the URL to get the domain
+      const parsedUrl = new URL(url);
+      const domain = parsedUrl.hostname;
+      
+      console.log('Checking URL:', url, 'Domain:', domain);
+      
+      // First check if it's in our known lists
+      if (confirmedPhishingUrls.has(url) || confirmedPhishingUrls.has(domain)) {
+        sendResponse({
+          success: true,
+          data: {
+            isSafe: false,
+            threatType: 'Known phishing site',
+            details: {
+              threatIndicators: ['URL matches known phishing pattern']
+            }
+          }
+        });
+        return true;
+      }
+      
+      if (safeUrls.has(url) || safeUrls.has(domain)) {
+        sendResponse({
+          success: true,
+          data: {
+            isSafe: true,
+            threatType: null,
+            details: {}
+          }
+        });
+        return true;
+      }
+      
+      // Perform basic client-side checks
+      const basicCheckResult = performBasicUrlCheck(url, domain);
+      
+      // Check authentication for full scan
+      chrome.storage.local.get(['isAuthenticated', 'token'], (result) => {
+        if (!result.isAuthenticated || !result.token) {
+          // Not authenticated, return limited scan
+          sendResponse({
+            success: true,
+            requiresAuth: true,
+            fallback: false,
+            data: {
+              isSafe: basicCheckResult.isSafe,
+              threatType: basicCheckResult.isSafe ? null : 'Suspicious URL pattern',
+              details: {
+                threatIndicators: basicCheckResult.indicators
+              }
+            }
+          });
+          return;
+        }
+        
+        // First check if server is available
+        fetch('http://localhost:5001/health')
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Health check failed');
+            }
+            return true;
+          })
+          .catch(error => {
+            console.error('Server health check failed:', error);
+            // Server is unavailable, use fallback
+            sendResponse({
+              success: true,
+              fallback: true,
+              error: 'Server unavailable',
+              data: {
+                isSafe: basicCheckResult.isSafe,
+                threatType: basicCheckResult.isSafe ? null : 'Suspicious URL pattern',
+                details: {
+                  threatIndicators: basicCheckResult.indicators
+                }
+              }
+            });
+            return false;
+          })
+          .then(serverAvailable => {
+            if (!serverAvailable) return;
+            
+            // Server is available, try the API
+            fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.checkUrl, {
+              method: 'POST',
+              headers: {
+                ...API_CONFIG.headers,
+                'Authorization': `Bearer ${result.token}`
+              },
+              body: JSON.stringify({
+                url: url,
+                domain: domain
+              }),
+              credentials: 'include'
+            })
+            .then(response => {
+              if (response.status === 404) {
+                // Endpoint does not exist
+                throw new Error('API endpoint not found');
+              }
+              if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+              }
+              return response.json();
+            })
+            .then(data => {
+              if (data.success) {
+                // Check for the presence of Safe Browsing data in the response
+                const safeBrowsingResult = data.data?.details?.safeBrowsing;
+                const isSafeBrowsingSource = data.data?.details?.source === "Google Safe Browsing API";
+                
+                // If Google Safe Browsing detected a threat, it's authoritative
+                if ((safeBrowsingResult && !safeBrowsingResult.isSafe) || 
+                    (isSafeBrowsingSource && !data.data.isSafe)) {
+                  console.log('Google Safe Browsing detected unsafe URL');
+                  
+                  // Save to confirmed phishing URLs
+                  confirmedPhishingUrls.add(url);
+                  confirmedPhishingUrls.add(domain);
+                }
+                
+                // Build response
+                sendResponse({
+                  success: true,
+                  data: data.data || {
+                    isSafe: data.isSafe,
+                    threatType: data.isSafe ? null : data.threatType,
+                    details: data.details || {}
+                  }
+                });
+                
+                // Save results to our caches
+                if (data.data?.isSafe) {
+                  safeUrls.add(url);
+                  safeUrls.add(domain);
+                } else if (data.data?.isPhishing || !data.data?.isSafe) {
+                  confirmedPhishingUrls.add(url);
+                  confirmedPhishingUrls.add(domain);
+                }
+              } else {
+                sendResponse({
+                  success: false,
+                  error: data.message || 'Server returned an error',
+                  fallback: true,
+                  data: {
+                    isSafe: basicCheckResult.isSafe,
+                    threatType: basicCheckResult.isSafe ? null : 'Suspicious URL pattern',
+                    details: {
+                      threatIndicators: basicCheckResult.indicators
+                    }
+                  }
+                });
+              }
+            })
+            .catch(error => {
+              console.error('URL check API error:', error);
+              sendResponse({
+                success: true, // Changed to true for fallback
+                error: `Error checking URL: ${error.message}`,
+                fallback: true,
+                data: {
+                  isSafe: basicCheckResult.isSafe,
+                  threatType: basicCheckResult.isSafe ? null : 'Suspicious URL pattern',
+                  details: {
+                    threatIndicators: basicCheckResult.indicators
+                  }
+                }
+              });
+            });
+          });
+      });
+      
+      return true; // Indicate async response
+    } catch (error) {
+      // Error parsing URL
+      console.error('URL parsing error:', error);
+      sendResponse({
+        success: false,
+        error: `Invalid URL: ${error.message}`,
+        data: { isSafe: null }
+      });
+      return true;
+    }
+  }
+
+  // Only process messages from content scripts with tab IDs
+  if (!sender.tab || !sender.tab.id) return false;
+  
+  const tabId = sender.tab.id;
+  
+  switch (message.action) {
+    case 'analyzePageContent':
+      handleAnalyzePageContent(tabId, message.data, sendResponse);
+      return true; // Indicate async response
+      
+    case 'reportBehaviorAnalysis':
+      handleBehaviorAnalysis(tabId, message.data);
+      break;
+      
+    case 'reportUserInteractionAnalysis':
+      handleUserInteractionAnalysis(tabId, message.data);
+      break;
+      
+    case 'reportCombinedAnalysis':
+      handleCombinedAnalysis(tabId, message.data);
+      break;
+      
+    case 'reportAnalysisUpdate':
+      handleAnalysisUpdate(tabId, message.data);
+      break;
   }
   
-  try {
-    console.log("URL Analyzer: Analyzing URL", url);
+  return false;
+}
+
+/**
+ * Handle tab updated event to reset data and start analysis
+ * @param {number} tabId - Tab ID
+ * @param {Object} changeInfo - Change info
+ * @param {Object} tab - Tab data
+ */
+function handleTabUpdated(tabId, changeInfo, tab) {
+  // Only react to URL changes and complete loads
+  if (!changeInfo.url && changeInfo.status !== 'complete') return;
+  
+  // Skip extension pages and empty pages
+  if (!tab.url || tab.url.startsWith('chrome://') || tab.url === 'about:blank') {
+    return;
+  }
+
+  // Reset previous analysis for this tab
+  if (changeInfo.url) {
+    resetTabAnalysis(tabId);
     
-    // Extract domain from URL for list checking
-    let domain;
-    try {
-      domain = new URL(url).hostname;
-      // Remove www. if present
-      domain = domain.replace(/^www\./, '');
-    } catch (e) {
-      console.warn("Invalid URL format:", url);
-      domain = url;
-    }
-    
-    // Check if domain is in user's allow list
-    if (authState.user && authState.user.allowList && 
-        authState.user.allowList.some(item => domain.includes(item.url) || item.url.includes(domain))) {
-      console.log("URL is in user's allow list:", domain);
-      return {
-        success: true,
-        data: {
-          url,
-          isSafe: true,
-          threatType: null,
-          analysisPhase: "ALLOW_LIST",
-          details: {
-            reason: "Domain is in your trusted sites list",
-            listMatch: "allowList"
-          }
-        }
-      };
-    }
-    
-    // Check if domain is in user's block list
-    if (authState.user && authState.user.blockList && 
-        authState.user.blockList.some(item => domain.includes(item.url) || item.url.includes(domain))) {
-      console.log("URL is in user's block list:", domain);
-      return {
-        success: true,
-        data: {
-          url,
-          isSafe: false,
-          threatType: "BLOCKLIST",
-          analysisPhase: "BLOCK_LIST",
-          details: {
-            reason: "Domain is in your blocked sites list",
-            listMatch: "blockList"
-          }
-        }
-      };
-    }
-    
-    // Skip local URL pattern analysis and rely entirely on Google Safe Browsing API
-    // for URL scanning to reduce false positives
-    
-    // Extract page content for analysis if available
-    let contentAnalysis = null;
-    if (pageContent && !pageContent.error) {
-      console.log("Content Analyzer: Analyzing webpage content");
-      contentAnalysis = analyzePageContent(pageContent);
-    }
-    
-    // Use backend service for URL scanning (Google Safe Browsing API) 
-    // and page content analysis
-    console.log("Sending URL to backend for Google Safe Browsing analysis");
-    
-    // Use authenticated endpoint if user is logged in
-    if (authService.isAuthenticated) {
-      console.log("User is authenticated. Using personalized URL checking");
-      return await checkUrlWithAuthenticatedBackend(url, contentAnalysis);
-    } else {
-      return await checkUrlWithBackend(url, contentAnalysis);
-    }
-  } catch (error) {
-    console.error("Error in URL analysis:", error);
-    return { 
-      success: false, 
-      error: error.message,
-      fallback: true,
-      data: {
-        url,
-        isSafe: true, // Default to safe if analysis fails
-        threatType: null,
-        analysisPhase: "ERROR"
-      }
-    };
+    // Check if URL is already known
+    const url = new URL(tab.url);
+    checkKnownUrl(tabId, url.href, url.hostname);
+  }
+  
+  // Update badge for fresh page load
+  if (changeInfo.status === 'complete') {
+    updateBadgeForTab(tabId, 'scanning');
   }
 }
 
 /**
- * Process scan result and normalize format
- * @param {Object} resultData Raw result data from server or local scan
- * @returns {Object} Normalized result object 
+ * Check if URL is already known as safe or suspicious
+ * @param {number} tabId - Tab ID
+ * @param {string} url - Full URL
+ * @param {string} domain - Domain name
  */
-function processResultData(resultData) {
-  return {
-    isSafe: resultData.isSafe,
-    url: resultData.url,
-    threatType: resultData.threatType || null,
-    analysisPhase: resultData.analysisPhase || null,
-    details: resultData.details || null,
-    timestamp: resultData.timestamp || new Date().toISOString()
+function checkKnownUrl(tabId, url, domain) {
+  // Check if already confirmed as phishing
+  if (confirmedPhishingUrls.has(url) || confirmedPhishingUrls.has(domain)) {
+    updateBadgeForTab(tabId, 'danger');
+    showPhishingWarning(tabId, {
+      url: url,
+      domain: domain,
+      reason: 'Previously confirmed phishing site'
+    });
+    return;
+  }
+  
+  // Check if previously flagged as suspicious
+  if (suspiciousUrls.has(url) || suspiciousUrls.has(domain)) {
+    updateBadgeForTab(tabId, 'warning');
+    return;
+  }
+  
+  // Check if already confirmed as safe
+  if (safeUrls.has(url) || safeUrls.has(domain)) {
+    updateBadgeForTab(tabId, 'safe');
+    return;
+  }
+  
+  // Otherwise request API check
+  checkUrlWithApi(tabId, url, domain);
+}
+
+/**
+ * Check URL with backend API
+ * @param {number} tabId - Tab ID
+ * @param {string} url - Full URL
+ * @param {string} domain - Domain name
+ */
+function checkUrlWithApi(tabId, url, domain) {
+  // Make API request to check URL
+  fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.checkUrl, {
+    method: 'POST',
+    headers: API_CONFIG.headers,
+    body: JSON.stringify({
+      url: url,
+      domain: domain
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.isPhishing) {
+      // Add to confirmed phishing list
+      confirmedPhishingUrls.add(url);
+      confirmedPhishingUrls.add(domain);
+      
+      // Update UI
+      updateBadgeForTab(tabId, 'danger');
+      showPhishingWarning(tabId, {
+        url: url,
+        domain: domain,
+        reason: data.reason || 'URL matches known phishing patterns'
+      });
+    }
+    else if (data.isSafe) {
+      // Add to safe URLs
+      safeUrls.add(url);
+      safeUrls.add(domain);
+      updateBadgeForTab(tabId, 'safe');
+    }
+    // Otherwise wait for content analysis results
+  })
+  .catch(error => {
+    console.error('[PhishGuard] URL check API error:', error);
+  });
+}
+
+/**
+ * Handle content analysis request
+ * @param {number} tabId - Tab ID
+ * @param {Object} contentData - Page content data
+ * @param {Function} sendResponse - Response function
+ */
+function handleAnalyzePageContent(tabId, contentData, sendResponse) {
+  // Store content data
+  if (!tabAnalysisData[tabId]) {
+    tabAnalysisData[tabId] = {};
+  }
+  
+  tabAnalysisData[tabId].contentData = contentData;
+  
+  // Make API request to analyze content
+  fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.analyzeContent, {
+    method: 'POST',
+    headers: API_CONFIG.headers,
+    body: JSON.stringify({
+      url: contentData.url,
+      domain: contentData.domain,
+      title: contentData.title,
+      description: contentData.metaDescription,
+      textSample: contentData.textSample,
+      hasLoginForm: contentData.hasLoginForm,
+      forms: contentData.forms.map(form => ({
+        action: form.action,
+        method: form.method,
+        isLoginForm: form.isLoginForm,
+        isExternalAction: form.isExternalAction,
+        inputCount: form.inputs ? form.inputs.length : 0,
+        hasPasswordField: form.inputs ? form.inputs.some(input => input.type === 'password') : false
+      }))
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    // Store NLP results
+    tabAnalysisData[tabId].nlpResults = data;
+    
+    // Send results back to content script
+    sendResponse({ nlpResults: data });
+    
+    // Also send to active tab in case response wasn't delivered
+    chrome.tabs.sendMessage(tabId, {
+      action: 'nlpResultsReady',
+      data: data
+    }).catch(err => {
+      // Tab might be navigating or closed, ignore error
+    });
+  })
+  .catch(error => {
+    console.error('[PhishGuard] Content analysis API error:', error);
+    sendResponse({ error: 'API request failed' });
+  });
+}
+
+/**
+ * Handle behavior analysis results
+ * @param {number} tabId - Tab ID
+ * @param {Object} data - Behavior analysis data
+ */
+function handleBehaviorAnalysis(tabId, data) {
+  // Initialize tab data if needed
+  if (!tabAnalysisData[tabId]) {
+    tabAnalysisData[tabId] = {};
+  }
+  
+  // Store behavior results
+  tabAnalysisData[tabId].behaviorResults = data;
+  
+  // Check if this is high risk
+  if (data.behaviorScore >= 70) {
+    // Update badge immediately for high-risk behavior
+    updateBadgeForTab(tabId, 'danger');
+    
+    // Get tab info to determine if warning needed
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError) return; // Tab closed
+      
+      // Show phishing warning if not already shown
+      if (!phishingAlerts[tabId]) {
+        showPhishingWarning(tabId, {
+          url: tab.url,
+          domain: new URL(tab.url).hostname,
+          reason: 'Suspicious JavaScript behavior detected',
+          details: data.detectedPatterns.map(p => p.details).flat().slice(0, 3),
+          score: data.behaviorScore
+        });
+      }
+    });
+  }
+  // Moderate risk - update badge only
+  else if (data.behaviorScore >= 40) {
+    updateBadgeForTab(tabId, 'warning');
+  }
+}
+
+/**
+ * Handle user interaction analysis results
+ * @param {number} tabId - Tab ID
+ * @param {Object} data - User interaction analysis data
+ */
+function handleUserInteractionAnalysis(tabId, data) {
+  // Initialize tab data if needed
+  if (!tabAnalysisData[tabId]) {
+    tabAnalysisData[tabId] = {};
+  }
+  
+  // Store interaction results
+  tabAnalysisData[tabId].interactionResults = data;
+  
+  // Check if this is high risk
+  if (data.interactionScore >= 70 && data.isLikelyPhishing) {
+    // Update badge for high-risk user interaction patterns
+    updateBadgeForTab(tabId, 'danger');
+    
+    // Get tab info to determine if warning needed
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError) return; // Tab closed
+      
+      // Show phishing warning if not already shown
+      if (!phishingAlerts[tabId]) {
+        showPhishingWarning(tabId, {
+          url: tab.url,
+          domain: new URL(tab.url).hostname,
+          reason: 'Suspicious user interface/interaction patterns',
+          details: data.details.slice(0, 3),
+          score: data.interactionScore
+        });
+      }
+    });
+  }
+  // Moderate risk - update badge only
+  else if (data.interactionScore >= 50) {
+    updateBadgeForTab(tabId, 'warning');
+  }
+}
+
+/**
+ * Handle combined analysis results
+ * @param {number} tabId - Tab ID
+ * @param {Object} data - Combined analysis data
+ */
+function handleCombinedAnalysis(tabId, data) {
+  // Update full analysis data
+  tabAnalysisData[tabId] = {
+    ...tabAnalysisData[tabId],
+    combinedResults: data,
+    lastAnalysisTime: Date.now()
+  };
+  
+  // Update badge based on combined risk
+  if (data.isLikelyPhishing) {
+    updateBadgeForTab(tabId, 'danger');
+    
+    // Add to suspicious URLs list
+    suspiciousUrls.add(data.url);
+    suspiciousUrls.add(data.domain);
+    
+    // Show warning if it's clearly phishing
+    if (data.combinedScore >= 80 && !phishingAlerts[tabId]) {
+      showPhishingWarning(tabId, {
+        url: data.url,
+        domain: data.domain,
+        reason: 'Multiple phishing indicators detected',
+        score: data.combinedScore
+      });
+      
+      // Report to API if high confidence
+      if (data.combinedScore >= 90) {
+        reportPhishingToApi(data);
+      }
+    }
+  } 
+  else if (data.combinedScore >= 40) {
+    updateBadgeForTab(tabId, 'warning');
+    suspiciousUrls.add(data.url);
+  }
+  else {
+    updateBadgeForTab(tabId, 'safe');
+    safeUrls.add(data.url);
+    safeUrls.add(data.domain);
+  }
+}
+
+/**
+ * Handle analysis update
+ * @param {number} tabId - Tab ID
+ * @param {Object} data - Analysis update data
+ */
+function handleAnalysisUpdate(tabId, data) {
+  // Skip if we don't have previous data
+  if (!tabAnalysisData[tabId] || !tabAnalysisData[tabId].combinedResults) return;
+  
+  // Get previous combined results
+  const previous = tabAnalysisData[tabId].combinedResults;
+  
+  // Check if risk level increased significantly
+  const behaviorIncrease = data.behavior.behaviorScore - 
+                          (previous.behavior ? previous.behavior.behaviorScore : 0);
+  
+  const interactionIncrease = data.interaction.interactionScore -
+                             (previous.interaction ? previous.interaction.interactionScore : 0);
+  
+  // If significant risk increase, update badge and potentially warn
+  if (behaviorIncrease > 20 || interactionIncrease > 20) {
+    // Recalculate combined score
+    const nlpWeight = previous.nlp ? 0.4 : 0;
+    const behaviorWeight = 0.35;
+    const interactionWeight = 0.25;
+    
+    const newScore = Math.round(
+      (previous.nlp ? (previous.nlp.nlpScore * nlpWeight) : 0) +
+      (data.behavior.behaviorScore * behaviorWeight) +
+      (data.interaction.interactionScore * interactionWeight)
+    );
+    
+    // Update stored data
+    tabAnalysisData[tabId].combinedResults.combinedScore = newScore;
+    tabAnalysisData[tabId].combinedResults.isLikelyPhishing = newScore >= 70;
+    tabAnalysisData[tabId].combinedResults.behavior = data.behavior;
+    tabAnalysisData[tabId].combinedResults.interaction = data.interaction;
+    
+    // Update UI based on new score
+    if (newScore >= 70) {
+      updateBadgeForTab(tabId, 'danger');
+      
+      // Show warning if significant change and not already warned
+      if (!phishingAlerts[tabId] && (behaviorIncrease > 30 || interactionIncrease > 30)) {
+        chrome.tabs.get(tabId, (tab) => {
+          if (chrome.runtime.lastError) return; // Tab closed
+          
+          showPhishingWarning(tabId, {
+            url: tab.url,
+            domain: new URL(tab.url).hostname,
+            reason: 'Phishing behavior detected after page interaction',
+            score: newScore
+          });
+        });
+      }
+    }
+    else if (newScore >= 40) {
+      updateBadgeForTab(tabId, 'warning');
+    }
+  }
+}
+
+/**
+ * Update badge for tab
+ * @param {number} tabId - Tab ID
+ * @param {string} status - Status ('safe', 'warning', 'danger', 'scanning')
+ */
+function updateBadgeForTab(tabId, status) {
+  let text = '';
+  let color = '#5D87E8';
+  
+  switch (status) {
+    case 'safe':
+      text = '✓';
+      color = '#4CAF50';
+      break;
+    case 'warning':
+      text = '!';
+      color = '#FF9800';
+      break;
+    case 'danger':
+      text = '!!';
+      color = '#F44336';
+      break;
+    case 'scanning':
+      text = '...';
+      color = '#5D87E8';
+      break;
+  }
+  
+  chrome.action.setBadgeText({ text: text, tabId: tabId });
+  chrome.action.setBadgeBackgroundColor({ color: color, tabId: tabId });
+}
+
+/**
+ * Show phishing warning
+ * @param {number} tabId - Tab ID
+ * @param {Object} data - Warning data
+ */
+function showPhishingWarning(tabId, data) {
+  // Record that we've shown an alert for this tab
+  phishingAlerts[tabId] = true;
+  
+  // Create notification
+  chrome.notifications.create(`phishing-alert-${tabId}`, {
+    type: 'basic',
+    iconUrl: '../images/icon128.jpg',
+    title: 'Phishing Warning!',
+    message: `Suspicious site detected: ${data.domain}\nReason: ${data.reason}`,
+    priority: 2,
+    buttons: [
+      { title: 'Close Tab' },
+      { title: 'Ignore' }
+    ]
+  });
+  
+  // Handle notification button clicks
+  chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+    if (notificationId === `phishing-alert-${tabId}`) {
+      if (buttonIndex === 0) {
+        // Close the tab
+        chrome.tabs.remove(tabId);
+      } else {
+        // Ignore - dismiss notification
+        chrome.notifications.clear(notificationId);
+      }
+    }
+  });
+  
+  // Update popup with alert info
+  tabAnalysisData[tabId].alert = {
+    timestamp: Date.now(),
+    url: data.url,
+    domain: data.domain,
+    reason: data.reason,
+    details: data.details || [],
+    score: data.score || 0
   };
 }
 
 /**
- * Check URL with authenticated backend services
- * @param {string} url - URL to check
- * @param {object} contentAnalysis - Result of local content analysis
- * @returns {object} Safety check result
+ * Report phishing site to API
+ * @param {Object} data - Phishing data
  */
-async function checkUrlWithAuthenticatedBackend(url, contentAnalysis = null) {
-  try {
-    // Get API URL from storage
-    const result = await chrome.storage.local.get(['apiUrl']);
-    const apiUrl = result.apiUrl || API_BASE_URL;
+function reportPhishingToApi(data) {
+  fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.reportPhishing, {
+    method: 'POST',
+    headers: API_CONFIG.headers,
+    body: JSON.stringify({
+      url: data.url,
+      domain: data.domain,
+      score: data.combinedScore,
+      nlpScore: data.nlp.nlpScore,
+      behaviorScore: data.behavior.behaviorScore,
+      interactionScore: data.interaction.interactionScore,
+      indicators: [
+        ...(data.nlp.indicators || []),
+        ...(data.behavior.detectedPatterns || []).map(p => p.type + ': ' + p.details.join(', ')),
+        ...(data.interaction.details || [])
+      ],
+      timestamp: Date.now()
+    })
+  })
+  .then(response => response.json())
+  .then(result => {
+    console.log('[PhishGuard] Phishing report submitted:', result);
     
-    // Get timeout settings
-    const timeoutSettings = await chrome.storage.local.get(['apiTimeouts']);
-    const timeout = timeoutSettings.apiTimeouts?.backend || 8000;
-    
-    // Set up abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
-    // Prepare request payload
-    const payload = {
-      url,
-      includeContentAnalysis: !!contentAnalysis,
-      contentScore: contentAnalysis?.score || 0,
-      threatIndicators: contentAnalysis?.indicators || []
-    };
-    
-    // Make the request to authenticated endpoint
-    const response = await fetch(`${apiUrl}/urls/user-check`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${authService.token}`
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    // Process response
-    if (response.ok) {
-      const data = await response.json();
-      
-      // Handle both response formats - new format has 'result' property
-      const resultData = data.result || data.data || {};
-      
-      console.log("Authenticated backend response:", resultData);
-      
-      return {
-        success: true,
-        data: processResultData(resultData)
-      };
-    } else {
-      // Handle error responses
-      return {
-        success: false,
-        error: `Backend error: ${response.status}`,
-        fallback: true,
-        data: {
-          url,
-          isSafe: null,
-          threatType: null,
-          analysisPhase: "ERROR",
-          details: {
-            message: `Error from backend service: ${response.statusText}`
-          }
-        }
-      };
+    // If confirmed, add to confirmed list
+    if (result.confirmed) {
+      confirmedPhishingUrls.add(data.url);
+      confirmedPhishingUrls.add(data.domain);
     }
-  } catch (error) {
-    // Handle network errors or timeouts
-    console.error("Error checking URL with backend:", error);
-    
-    // For timeouts, provide a specific message
-    if (error.name === "AbortError") {
-      return {
-        success: false,
-        error: "Request timed out",
-        fallback: true,
-        data: {
-          url,
-          isSafe: null,
-          threatType: null,
-          analysisPhase: "TIMEOUT",
-          details: {
-            message: "Backend service request timed out"
-          }
-        }
-      };
-    }
-    
-    // For other errors
-    return {
-      success: false,
-      error: error.message,
-      fallback: true,
-      data: {
-        url,
-        isSafe: null,
-        threatType: null,
-        analysisPhase: "ERROR",
-        details: {
-          message: `Network or server error: ${error.message}`
-        }
-      }
-    };
+  })
+  .catch(error => {
+    console.error('[PhishGuard] Error reporting phishing:', error);
+  });
+}
+
+/**
+ * Handle tab removed
+ * @param {number} tabId - Tab ID
+ */
+function handleTabRemoved(tabId) {
+  // Clean up data for this tab
+  delete tabAnalysisData[tabId];
+  delete phishingAlerts[tabId];
+}
+
+/**
+ * Reset tab analysis data
+ * @param {number} tabId - Tab ID
+ */
+function resetTabAnalysis(tabId) {
+  tabAnalysisData[tabId] = {};
+  phishingAlerts[tabId] = false;
+}
+
+/**
+ * Reset extension state
+ */
+function resetExtensionState() {
+  // Clear all stored data
+  Object.keys(tabAnalysisData).forEach(key => delete tabAnalysisData[key]);
+  Object.keys(phishingAlerts).forEach(key => delete phishingAlerts[key]);
+  
+  // Maintain small cache of known URLs
+  if (confirmedPhishingUrls.size > 1000) {
+    confirmedPhishingUrls.clear();
+  }
+  if (suspiciousUrls.size > 1000) {
+    suspiciousUrls.clear();
+  }
+  if (safeUrls.size > 5000) {
+    safeUrls.clear();
   }
 }
 
 /**
- * Check URL with unauthenticated backend services
- * @param {string} url - URL to check
- * @param {object} contentAnalysis - Result of local content analysis
- * @returns {object} Safety check result
+ * Perform basic client-side URL check
+ * @param {string} url - Full URL
+ * @param {string} domain - Domain name
+ * @returns {Object} Check result
  */
-async function checkUrlWithBackend(url, contentAnalysis = null) {
-  try {
-    // Get API URL from storage
-    const result = await chrome.storage.local.get(['apiUrl']);
-    const apiUrl = result.apiUrl || API_BASE_URL;
-    
-    // Get timeout settings
-    const timeoutSettings = await chrome.storage.local.get(['apiTimeouts']);
-    const timeout = timeoutSettings.apiTimeouts?.backend || 8000;
-    
-    // Set up abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
-    // Prepare request payload
-    const payload = {
-      url,
-      includeContentAnalysis: !!contentAnalysis,
-      contentScore: contentAnalysis?.score || 0,
-      threatIndicators: contentAnalysis?.indicators || []
-    };
-    
-    // Make the request to unauthenticated endpoint
-    const response = await fetch(`${apiUrl}/urls/check`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    // Process response
-    if (response.ok) {
-      const data = await response.json();
-      
-      // Handle both response formats - new format has 'result' property
-      const resultData = data.result || data.data || {};
-      
-      console.log("Backend response:", resultData);
-      
-      return {
-        success: true,
-        data: processResultData(resultData)
-      };
-    } else {
-      // Handle error responses
-      return {
-        success: false,
-        error: `Backend error: ${response.status}`,
-        fallback: true,
-        data: {
-          url,
-          isSafe: null,
-          threatType: null,
-          analysisPhase: "ERROR",
-          details: {
-            message: `Error from backend service: ${response.statusText}`
-          }
-        }
-      };
-    }
-  } catch (error) {
-    // Handle network errors or timeouts
-    console.error("Error checking URL with backend:", error);
-    
-    // For timeouts, provide a specific message
-    if (error.name === "AbortError") {
-      return {
-        success: false,
-        error: "Request timed out",
-        fallback: true,
-        data: {
-          url,
-          isSafe: null,
-          threatType: null,
-          analysisPhase: "TIMEOUT",
-          details: {
-            message: "Backend service request timed out"
-          }
-        }
-      };
-    }
-    
-    // For other errors
-    return {
-      success: false,
-      error: error.message,
-      fallback: true,
-      data: {
-        url,
-        isSafe: null,
-        threatType: null,
-        analysisPhase: "ERROR",
-        details: {
-          message: `Network or server error: ${error.message}`
-        }
-      }
-    };
+function performBasicUrlCheck(url, domain) {
+  const indicators = [];
+  let isSafe = true;
+  
+  // Check for IP address instead of domain
+  if (/^https?:\/\/\d+\.\d+\.\d+\.\d+/.test(url)) {
+    indicators.push('IP address used instead of domain name');
+    isSafe = false;
   }
+  
+  // Check for suspicious TLDs
+  const suspiciousTLDs = ['.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.xyz'];
+  if (suspiciousTLDs.some(tld => domain.endsWith(tld))) {
+    indicators.push('Domain uses suspicious TLD');
+    isSafe = false;
+  }
+  
+  // Check for too many subdomains
+  const subdomainCount = domain.split('.').length - 1;
+  if (subdomainCount > 3) {
+    indicators.push('Excessive number of subdomains');
+    isSafe = false;
+  }
+  
+  // Check for unusual port
+  const urlObj = new URL(url);
+  if (urlObj.port && urlObj.port !== '80' && urlObj.port !== '443') {
+    indicators.push('Unusual port number in URL');
+    isSafe = false;
+  }
+  
+  // Check for encoded characters
+  if (/%[0-9a-f]{2}/i.test(url)) {
+    indicators.push('URL contains encoded characters');
+    isSafe = false;
+  }
+  
+  // Check for common brands in domain
+  const commonBrands = ['paypal', 'apple', 'microsoft', 'amazon', 'google', 'facebook', 'netflix', 'instagram'];
+  if (commonBrands.some(brand => {
+    // Check for brand name but not as the main domain
+    return domain.includes(brand) && !domain.endsWith(`.${brand}.com`);
+  })) {
+    indicators.push('Domain contains common brand name (potential spoofing)');
+    isSafe = false;
+  }
+  
+  // Default to neutral if no indicators but no positive signals
+  if (indicators.length === 0) {
+    isSafe = null; // Neutral assessment
+  }
+  
+  return {
+    isSafe,
+    indicators
+  };
 }

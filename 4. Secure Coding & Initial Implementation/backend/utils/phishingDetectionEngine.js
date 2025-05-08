@@ -1,14 +1,16 @@
 /**
  * Phishing Detection Engine
  * 
- * This module now only analyzes page content for phishing indicators.
- * URL scanning is handled exclusively by Google Safe Browsing API.
+ * This module now uses a Random Forest classifier and content analysis
+ * for enhanced phishing detection capabilities.
  */
 
 const axios = require('axios');
 const { parse } = require('url');
 const dns = require('dns');
 const util = require('util');
+const phishingClassifier = require('./randomForestClassifier');
+const { extractFeatures } = require('./featureExtractor');
 
 // Promisify DNS functions
 const dnsLookup = util.promisify(dns.lookup);
@@ -17,10 +19,25 @@ const dnsReverse = util.promisify(dns.reverse);
 // Constants for scoring
 const PHISHING_THRESHOLD = 70; // Score above which a URL is considered phishing
 const MAX_SCORE = 100;
+const ML_WEIGHT = 0.6; // Weight for ML model (60% of total score)
+const RULE_WEIGHT = 0.4; // Weight for rule-based analysis (40% of total score)
+
+// Initialize the classifier when this module is loaded
+(async function initializeClassifier() {
+  try {
+    const isInitialized = await phishingClassifier.initialize();
+    console.log(`[Phishing Engine] Classifier initialization: ${isInitialized ? 'Success' : 'Failed'}`);
+    
+    // If classifier isn't initialized, we'll rely on rule-based detection
+    // until the model is properly trained
+  } catch (error) {
+    console.error(`[Phishing Engine] Classifier initialization error: ${error.message}`);
+  }
+})();
 
 /**
  * Main function to analyze a URL for phishing indicators
- * Now only analyzes page content, not URL structure
+ * Now incorporates machine learning with Random Forest classifier
  * @param {string} url - The URL to analyze
  * @param {Object} safeBrowsingResult - Result from Google Safe Browsing API
  * @param {Object} pageContent - Optional page content from browser for analysis
@@ -28,41 +45,79 @@ const MAX_SCORE = 100;
  */
 async function analyzeUrl(url, safeBrowsingResult = null, pageContent = null) {
   try {
-    console.log(`[Phishing Engine] Analyzing content from: ${url}`);
+    console.log(`[Phishing Engine] Analyzing URL and content from: ${url}`);
     
     const parsedUrl = new URL(url);
     const indicators = [];
     let totalScore = 0;
-    
-    // Only use Google Safe Browsing result for URL safety
-    // Don't perform our own URL analysis
+    let mlScore = 0;
+    let ruleScore = 0;
+    let importantFeatures = [];
     
     // Google Safe Browsing integration - this is the only URL-based check we'll use
     const safeBrowsingScore = integrateSafeBrowsingResult(safeBrowsingResult);
-    totalScore += safeBrowsingScore.score;
+    ruleScore += safeBrowsingScore.score;
     indicators.push(...safeBrowsingScore.indicators);
     
-    // Page content analysis (if available)
+    // ML-based analysis
+    if (pageContent && !pageContent.error) {
+      // Extract features for the classifier
+      const features = extractFeatures(url, pageContent);
+      
+      // Get prediction from Random Forest classifier
+      const prediction = phishingClassifier.predict(features);
+      
+      if (!prediction.error) {
+        // Convert probability to score (0-100)
+        mlScore = Math.round(prediction.probability * 100);
+        
+        // Add important features to indicators
+        if (prediction.importantFeatures && prediction.importantFeatures.length > 0) {
+          importantFeatures = prediction.importantFeatures;
+          
+          // Add top 2 features to indicators
+          prediction.importantFeatures.slice(0, 2).forEach(feature => {
+            indicators.push(`ML detected: ${feature.name} (Impact: ${feature.contribution})`);
+          });
+        }
+        
+        // Add ML confidence as indicator
+        indicators.push(`Machine Learning confidence: ${Math.round(prediction.confidence * 100)}%`);
+      }
+    }
+    
+    // Page content rule-based analysis (this is still useful alongside ML)
     let contentResult = { score: 0, indicators: [] };
     if (pageContent && !pageContent.error) {
       contentResult = analyzePageContent(pageContent, parsedUrl.hostname);
-      totalScore += contentResult.score;
+      ruleScore += contentResult.score;
       indicators.push(...contentResult.indicators);
+    }
+    
+    // Weight and combine ML and rule-based scores
+    if (mlScore > 0) {
+      totalScore = (mlScore * ML_WEIGHT) + (ruleScore * RULE_WEIGHT);
+    } else {
+      // If ML score not available, rely entirely on rule-based
+      totalScore = ruleScore;
     }
     
     // Normalize score to 0-100 range
     totalScore = Math.min(Math.round(totalScore), MAX_SCORE);
     
-    // Final verdict - now based only on Google Safe Browsing and content analysis
-    // If Safe Browsing says it's unsafe, it's unsafe regardless of content score
+    // Final verdict - ML + Rule-based analysis + Safe Browsing
+    // If Safe Browsing says it's unsafe, it's unsafe regardless of other scores
     const isPhishing = (safeBrowsingResult && !safeBrowsingResult.isSafe) || 
-                       (contentResult.score >= PHISHING_THRESHOLD);
+                       (totalScore >= PHISHING_THRESHOLD);
     
     return {
       url,
       phishingScore: totalScore,
+      mlScore,
+      ruleScore,
       isPhishing,
       phishingIndicators: indicators,
+      importantFeatures,
       contentAnalysis: pageContent ? {
         hasLoginForm: contentResult.hasLoginForm || false,
         contentScore: contentResult.score || 0,

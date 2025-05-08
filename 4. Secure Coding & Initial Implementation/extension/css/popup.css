@@ -416,3 +416,128 @@ button i {
   background-color: var(--error-color);
   color: white;
 }
+
+/* Add AI Analysis styles after existing styles */
+
+/* AI Analysis Styles */
+.ai-analysis {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.ai-analysis h2 {
+  font-size: 16px;
+  color: var(--primary-color);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.ai-analysis h2 i {
+  margin-right: 8px;
+}
+
+.ai-score-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.ai-score-gauge {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--success-color) 0% var(--safe-percent, 100%),
+    var(--error-color) var(--safe-percent, 100%) 100%
+  );
+  position: relative;
+  margin-right: 16px;
+}
+
+.ai-score-gauge::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  background: var(--surface-color);
+  border-radius: 50%;
+}
+
+.ai-score-value {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  font-weight: bold;
+}
+
+.ai-score-details {
+  flex: 1;
+}
+
+.ai-score-label {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.ai-score-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ai-features {
+  background-color: var(--background-light);
+  border-radius: var(--border-radius);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.ai-feature {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ai-feature:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.ai-feature-icon {
+  margin-right: 12px;
+  color: var(--text-secondary);
+}
+
+.ai-feature-name {
+  font-weight: 500;
+  flex: 1;
+}
+
+.ai-feature-confidence {
+  width: 60px;
+  height: 6px;
+  background-color: var(--border-color);
+  border-radius: 3px;
+  margin-right: 8px;
+  overflow: hidden;
+}
+
+.ai-feature-confidence-bar {
+  height: 100%;
+  background-color: var(--primary-color);
+  border-radius: 3px;
+}
+
+.ai-feature-confidence-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
