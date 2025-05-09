@@ -48,7 +48,11 @@ const phishingPatterns = {
     'via', '2via', 'ideal', 'banco', 'bank', 'health', 'insurance', 'plano',
     // Adding Brazilian financial terms
     'consulta', 'saldo', 'indenização', 'indenizacao', 'restituicao', 'restituição',
-    'beneficio', 'benefício', 'auxilio', 'auxílio', 'resgate', 'cadastro', 'cpf'
+    'beneficio', 'benefício', 'auxilio', 'auxílio', 'resgate', 'cadastro', 'cpf',
+    // Adding darknet market related terms
+    'market', 'darknet', 'dark', 'deep', 'onion', 'silk', 'russia', 'russiaa', 'russiaan',
+    'captcha', 'anonymous', 'hidden', 'escrow', 'bitcoin', 'btc', 'crypto', 'monero',
+    'xmr', 'pgp', 'verify', 'tor', 'privacy'
   ],
   
   // Common brand targets in phishing
@@ -64,7 +68,10 @@ const phishingPatterns = {
     'caixa', 'banco', 'saude', 'health', 'seguro', 'insurance', 'visa', 'mastercard',
     // Adding Brazilian financial institutions commonly targeted
     'nubank', 'inter', 'c6bank', 'bancopan', 'picpay', 'original', 'mercadopago',
-    'next', 'neon', 'digio', 'bs2', 'bmg', 'pagseguro', 'banrisul', 'crefisa'
+    'next', 'neon', 'digio', 'bs2', 'bmg', 'pagseguro', 'banrisul', 'crefisa',
+    // Adding darknet market names commonly impersonated 
+    'hydra', 'russian', 'russiaa', 'russiaan', 'darkmarket', 'empire', 'alphabay', 'versus',
+    'world', 'torrez', 'dark0de', 'cannazon', 'whitehouse', 'monopoly', 'darkfox'
   ],
   
   // Common free hosting services used in phishing
@@ -81,7 +88,10 @@ const phishingPatterns = {
   suspiciousTLDs: [
     '.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.xyz', '.online', 
     '.site', '.club', '.info', '.biz', '.live', '.services', '.buzz',
-    '.shop', '.store', '.uno', '.pw', '.fun', '.casa', '.icu', '.today'
+    '.shop', '.store', '.uno', '.pw', '.fun', '.casa', '.icu', '.today',
+    // Darknet market commonly used TLDs
+    '.to', '.st', '.lc', '.ws', '.cc', '.io', '.is', '.ly', '.me', '.su',
+    '.rs', '.gs', '.sh'
   ],
   
   // Known phishing URL patterns (regex patterns)
@@ -108,7 +118,13 @@ const phishingPatterns = {
     /consulte.*saldo/i,
     /resgate.*beneficio/i,
     /verificar.*conta/i,
-    /cpf.*verificar/i
+    /cpf.*verificar/i,
+    // Adding darknet market patterns
+    /russiaanmarket/i,
+    /russia+n+market/i,
+    /market.*captcha/i,
+    /login.*captcha/i,
+    /forgot.*password.*contacts/i
   ],
   
   // Hard-coded samples from PhishTank and Kaggle
@@ -141,15 +157,6 @@ const phishingPatterns = {
     'xfinity-update',
     'xfinity-verify',
     'xfinity.weebly',
-    'comcast87', 
-    'comcast8', 
-    'comcast9',
-    'comcast-account',
-    'comcast-security',
-    'comcast-update',
-    'comcast-login',
-    'comcast-verify',
-    'comcast.weebly',
     // Adding patterns for common misspelled support domains
     'idealsuport',
     'suport',
@@ -173,7 +180,21 @@ const phishingPatterns = {
     'nubank.online',
     'nubank.site',
     'nubank.info',
-    'nubank.top'
+    'nubank.top',
+    // Adding darknet market phishing patterns
+    'russiaanmarket',
+    'russiaamarket',
+    'russianmarket',
+    'russian-market',
+    'russia-market',
+    'darkmarket',
+    'darkweb',
+    'darknet',
+    'hydramarket',
+    'alphabay',
+    'empire-market',
+    'versus-market',
+    'torrez-market'
   ],
   
   // URL patterns that contain both a brand name and suspicious term
@@ -194,7 +215,8 @@ const phishingPatterns = {
     {correct: 'login', misspelled: ['logon', 'loging', 'logn', 'entrar']},
     {correct: 'official', misspelled: ['oficial', 'ofisial', 'offical', 'officiel']},
     {correct: 'service', misspelled: ['servic', 'servico', 'servis', 'servizio']},
-    {correct: 'customer', misspelled: ['custmer', 'client', 'cliente', 'costumer']}
+    {correct: 'customer', misspelled: ['custmer', 'client', 'cliente', 'costumer']},
+    {correct: 'russian', misspelled: ['russias', 'russin', 'russiaan', 'russiaan', 'russiaa']}
   ],
   
   // Payment and banking terms in multiple languages (common in global phishing)
@@ -217,7 +239,11 @@ const phishingPatterns = {
     /nu-/i,
     /nu\./i,
     // Brazilian document request patterns
-    /\/(cpf|consulta|verificar|cadastro)\//i
+    /\/(cpf|consulta|verificar|cadastro)\//i,
+    // Darknet market patterns
+    /russia+n+market\./i,
+    /darkmarket\./i,
+    /market\.(to|cc|st|me)/i
   ],
   
   // Brazilian financial terminology and document patterns
@@ -227,6 +253,26 @@ const phishingPatterns = {
     'auxílio', 'auxilio', 'cadastro', 'conta', 'login', 'entrar', 'acessar'
   ],
   
+  // Darknet marketplace terminology
+  darknetMarketTerms: [
+    'captcha', 'market', 'escrow', 'pgp', 'btc', 'xmr', 'crypto', 'bitcoin', 'monero',
+    'wallet', 'vendor', 'anonymous', 'hidden', 'mirror', 'verify', 'verification',
+    'account', 'password', 'forgot', 'contacts', 'register', 'login',
+    'россия', 'russian', 'russiaan', 'russiaa', 'россиян', 'рынок', 'даркнет'
+  ],
+  
+  // Suspicious captcha implementations (common in phishing)
+  suspiciousCaptchaPatterns: [
+    // Sites with multiple captchas on login/register pages
+    // Sites with fake captchas that don't actually validate
+    // Sites that use captchas but have poor security otherwise
+    /captcha.*password/i,
+    /password.*captcha/i,
+    /forgot.*password.*contacts/i,
+    /captcha.*login/i,
+    /captcha.*create.*account/i
+  ],
+  
   // List of legitimate banking domains for comparison
   legitimateBankingDomains: [
     'nubank.com.br', 'banco.bradesco', 'bb.com.br', 'santander.com.br', 'caixa.gov.br',
@@ -234,12 +280,17 @@ const phishingPatterns = {
     'mercadopago.com.br', 'picpay.com', 'neon.com.br', 'next.me', 'bs2.com', 'bmg.com.br',
     'pagseguro.uol.com.br', 'banrisul.com.br', 'crefisa.com.br', 'digio.com.br',
     'paypal.com', 'stripe.com', 'wise.com'
+  ],
+  
+  // Legitimate darknet markets (for research purposes only)
+  legitimateDarknetDomains: [
+    'torproject.org', 'deepdotweb.com', 'darknetlive.com', 'darknetstats.com'
   ]
 };
 
 // Generate combinations of brand + suspicious term patterns
 for (const brand of phishingPatterns.targetedBrands) {
-  for (const term of ['verify', 'secure', 'login', 'signin', 'account', 'update', 'confirm', 'payment', 'portal', 'bill', 'boleto', 'via', 'cpf', 'consulta']) {
+  for (const term of ['verify', 'secure', 'login', 'signin', 'account', 'update', 'confirm', 'payment', 'portal', 'bill', 'boleto', 'via', 'cpf', 'consulta', 'market', 'captcha']) {
     phishingPatterns.brandWithSuspicious.push(`${brand}-${term}`);
     phishingPatterns.brandWithSuspicious.push(`${term}-${brand}`);
     phishingPatterns.brandWithSuspicious.push(`${brand}.${term}`);
@@ -262,6 +313,21 @@ for (const brand of phishingPatterns.targetedBrands) {
       phishingPatterns.brandWithSuspicious.push(`-${brand.substring(0, 2)}`);
       phishingPatterns.brandWithSuspicious.push(`${brand.substring(0, 2)}.`);
       phishingPatterns.brandWithSuspicious.push(`hj-${brand.substring(0, 2)}`);
+    }
+    
+    // Add special patterns for darknet markets
+    if (brand === 'russian' || brand === 'hydra' || brand === 'empire' || brand === 'alphabay') {
+      // Add misspelled variations
+      if (brand === 'russian') {
+        phishingPatterns.brandWithSuspicious.push(`russiaan${term}`);
+        phishingPatterns.brandWithSuspicious.push(`russiaa${term}`);
+        phishingPatterns.brandWithSuspicious.push(`russiamarket`);
+        phishingPatterns.brandWithSuspicious.push(`russiaanmarket`);
+      }
+      
+      // Add market patterns
+      phishingPatterns.brandWithSuspicious.push(`${brand}market`);
+      phishingPatterns.brandWithSuspicious.push(`${brand}-market`);
     }
   }
 }
