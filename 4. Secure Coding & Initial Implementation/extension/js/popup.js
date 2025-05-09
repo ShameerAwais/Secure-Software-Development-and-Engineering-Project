@@ -126,25 +126,50 @@ function handleScanResult(response) {
     // Handle successful scan
     const { isSafe, threatType, details } = response.data;
     const source = details?.source;
+    const indicators = details?.threatIndicators || [];
     
-    if (isSafe) {
+    // Check if there are phishing indicators even if isSafe flag is set
+    const hasPhishingIndicators = indicators.length > 0;
+    
+    if (isSafe === true && !hasPhishingIndicators) {
+      // Truly safe with no indicators
       updateStatus(
         'safe', 
         'Website appears to be safe', 
         source ? `No threats detected<br><small>Source: ${source}</small>` : 'No threats detected'
       );
     } else if (isSafe === null) {
-      // For the case where we're in offline mode or couldn't determine
-      updateStatus(
-        'warning', 
-        'Limited scan only', 
-        source ? 
-          `Only local checks were performed. Full security scan unavailable.<br><small>Source: ${source}</small>` : 
-          'Only local checks were performed. Full security scan unavailable.'
-      );
+      // Case where we couldn't definitively determine (neutral) or limited scan
+      // Check if there are indicators despite the null safety status
+      if (hasPhishingIndicators) {
+        // If there are indicators, show warning
+        let detailMessage = `Some suspicious patterns detected:<br>`;
+        detailMessage += '<ul style="margin: 5px 0; padding-left: 15px;">';
+        indicators.forEach(indicator => {
+          detailMessage += `<li>${indicator}</li>`;
+        });
+        detailMessage += '</ul>';
+        
+        // Add source if available
+        if (source) {
+          detailMessage += `<small>Source: ${source}</small>`;
+        }
+        
+        updateStatus('warning', 'Potential security concerns', detailMessage);
+      } else {
+        // No indicators, but couldn't fully determine
+        updateStatus(
+          'warning', 
+          'Limited scan only', 
+          source ? 
+            `Only local checks were performed. Full security scan unavailable.<br><small>Source: ${source}</small>` : 
+            'Only local checks were performed. Full security scan unavailable.'
+        );
+      }
     } else {
+      // Unsafe site or has indicators despite isSafe flag
       // Create detailed message for unsafe site
-      let detailMessage = `Threat type: ${threatType || 'Unknown'}`;
+      let detailMessage = threatType ? `Threat type: ${threatType}` : 'Suspicious website detected';
       
       // Add source information if available
       if (source) {
@@ -152,16 +177,26 @@ function handleScanResult(response) {
       }
       
       // Add specific threat indicators if available
-      if (details && details.threatIndicators && details.threatIndicators.length > 0) {
+      if (hasPhishingIndicators) {
         detailMessage += '<br><br>Detected issues:';
         detailMessage += '<ul style="margin: 5px 0; padding-left: 15px;">';
-        details.threatIndicators.forEach(indicator => {
+        indicators.forEach(indicator => {
           detailMessage += `<li>${indicator}</li>`;
         });
         detailMessage += '</ul>';
       }
       
-      updateStatus('unsafe', 'Potential security threat detected', detailMessage);
+      // Brand impersonation is a high priority warning
+      const hasBrandImpersonation = indicators.some(ind => 
+        ind.toLowerCase().includes('brand') || 
+        ind.toLowerCase().includes('impersonation') ||
+        ind.toLowerCase().includes('spoofing'));
+      
+      if (hasBrandImpersonation) {
+        updateStatus('unsafe', 'Possible brand impersonation detected', detailMessage);
+      } else {
+        updateStatus('unsafe', 'Potential security threat detected', detailMessage);
+      }
     }
     
     // Show URL actions for authenticated users only
@@ -176,11 +211,29 @@ function handleScanResult(response) {
     if (response.fallback) {
       const source = response.data?.details?.source;
       const sourceText = source ? `<br><small>Source: ${source}</small>` : '';
-      updateStatus(
-        'warning', 
-        'Limited scan only', 
-        `Security service unavailable. Only local checks were performed.${sourceText}<br><small>Error: ${response.error || 'Server connection failed'}</small>`
-      );
+      
+      // Check if the fallback response has threat indicators
+      const indicators = response.data?.details?.threatIndicators || [];
+      if (indicators.length > 0) {
+        let detailMessage = `Local security scan found issues:${sourceText}`;
+        detailMessage += '<ul style="margin: 5px 0; padding-left: 15px;">';
+        indicators.forEach(indicator => {
+          detailMessage += `<li>${indicator}</li>`;
+        });
+        detailMessage += '</ul>';
+        
+        updateStatus(
+          'warning',
+          'Suspicious patterns detected',
+          detailMessage
+        );
+      } else {
+        updateStatus(
+          'warning', 
+          'Limited scan only', 
+          `Security service unavailable. Only local checks were performed.${sourceText}<br><small>Error: ${response.error || 'Server connection failed'}</small>`
+        );
+      }
     } else if (response.requiresAuth) {
       updateStatus(
         'warning', 

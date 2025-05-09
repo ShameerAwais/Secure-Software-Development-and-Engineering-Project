@@ -71,6 +71,13 @@ async function extractPageFeatures() {
     form.inputs && form.inputs.some(input => input.type === 'password')
   );
   
+  // Enhanced security checks based on improved form detection
+  const hasSuspiciousForm = forms.some(form => form.isSuspiciousForm);
+  const hasExternalFormAction = forms.some(form => form.isExternalAction && form.isLoginForm);
+  const hasUnsecuredLoginForm = forms.some(form => 
+    form.isLoginForm && form.action && form.action.startsWith('http:')
+  );
+  
   // Security indicators
   const hasHttps = window.location.protocol === 'https:';
   const contentHasHttps = textSample.includes('https');
@@ -96,6 +103,9 @@ async function extractPageFeatures() {
     textSample: textSample,
     hasLoginForm: hasLoginForm,
     hasPasswordField: hasPasswordField,
+    hasSuspiciousForm: hasSuspiciousForm,
+    hasExternalFormAction: hasExternalFormAction,
+    hasUnsecuredLoginForm: hasUnsecuredLoginForm,
     hasHttps: hasHttps,
     contentHasHttps: contentHasHttps,
     claimsSecureOrVerified: claimsSecureOrVerified,
@@ -149,22 +159,71 @@ function extractFormDetails() {
       placeholder: input.placeholder || ''
     }));
     
-    // Check if this is a login form
-    const isLoginForm = inputDetails.some(input => input.type === 'password') ||
+    // Enhanced login form detection
+    // Check for login-related keywords in various attributes
+    const formText = [
+      form.id || '',
+      form.className || '',
+      form.action || '',
+      ...inputDetails.map(i => i.name),
+      ...inputDetails.map(i => i.id),
+      ...inputDetails.map(i => i.placeholder)
+    ].join(' ').toLowerCase();
+    
+    // Look for login-related terms
+    const loginKeywords = ['login', 'signin', 'sign in', 'log in', 'authenticate', 'credentials', 'username', 'email', 'account'];
+    const containsLoginTerms = loginKeywords.some(term => formText.includes(term));
+    
+    // Check for any password field
+    const hasPasswordField = inputDetails.some(input => input.type === 'password');
+    
+    // Check for credential-related input patterns
+    const hasEmailField = inputDetails.some(input => 
+      input.type === 'email' || 
+      input.name?.includes('email') || 
+      input.id?.includes('email') || 
+      input.placeholder?.includes('email')
+    );
+    
+    const hasUsernameField = inputDetails.some(input => 
+      input.name?.includes('user') || 
+      input.id?.includes('user') || 
+      input.placeholder?.includes('user') ||
+      input.name?.includes('name') || 
+      input.id?.includes('name') || 
+      input.placeholder?.includes('name')
+    );
+    
+    // Determine if this is a login form
+    const isLoginForm = hasPasswordField || 
                         (form.action && form.action.toLowerCase().includes('login')) ||
                         (form.id && form.id.toLowerCase().includes('login')) ||
-                        (form.className && form.className.toLowerCase().includes('login'));
+                        (form.className && form.className.toLowerCase().includes('login')) ||
+                        (containsLoginTerms && (hasEmailField || hasUsernameField));
     
-    // External action check
+    // Check for external form action (possible data theft)
     let isExternalAction = false;
+    let actionUrl = '';
     try {
       if (form.action) {
+        actionUrl = form.action;
         const actionDomain = new URL(form.action, window.location.href).hostname;
         isExternalAction = actionDomain !== currentDomain;
       }
     } catch (e) {
       // URL parsing error
     }
+    
+    // Check for suspicious form attributes
+    const isSuspiciousForm = 
+      // No action (could be hijacked by JS)
+      !form.action || 
+      // Sends data to a different domain
+      isExternalAction ||
+      // Non-HTTPS form with password field  
+      (hasPasswordField && actionUrl && actionUrl.startsWith('http:')) ||
+      // Hidden form with credentials
+      (isLoginForm && getComputedStyle(form).display === 'none');
     
     return {
       action: form.action || '',
@@ -173,7 +232,10 @@ function extractFormDetails() {
       className: form.className || '',
       inputs: inputDetails,
       isLoginForm: isLoginForm,
-      isExternalAction: isExternalAction
+      isExternalAction: isExternalAction,
+      isSuspiciousForm: isSuspiciousForm,
+      hasPasswordField: hasPasswordField,
+      hasEmailField: hasEmailField
     };
   });
 }
@@ -289,7 +351,14 @@ function analyzePageContent(features) {
       metaDescription: features.metaDescription,
       textSample: features.textSample,
       forms: features.forms,
-      links: features.links
+      links: features.links,
+      hasLoginForm: features.hasLoginForm,
+      hasPasswordField: features.hasPasswordField,
+      hasSuspiciousForm: features.hasSuspiciousForm,
+      hasExternalFormAction: features.hasExternalFormAction,
+      hasUnsecuredLoginForm: features.hasUnsecuredLoginForm,
+      claimsSecureOrVerified: features.claimsSecureOrVerified,
+      hasUrgencyLanguage: features.hasUrgencyLanguage
     }
   }, response => {
     if (response && response.nlpResults) {

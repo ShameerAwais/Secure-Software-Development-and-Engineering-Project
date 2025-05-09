@@ -130,7 +130,7 @@ async function loadHistory() {
       const { history, pagination: paginationData } = response;
       
       // Update pagination data
-      totalPages = paginationData.pages || 1;
+      totalPages = paginationData?.pages || 1;
       
       // Check if we have history data
       if (history && history.length > 0) {
@@ -139,20 +139,25 @@ async function loadHistory() {
         populateHistoryTable(history);
         updatePagination();
       } else {
-        // Show empty state
+        // Show empty state for no data
+        emptyState.textContent = 'No URL checks found in your history.';
         emptyState.classList.remove('hidden');
       }
     } else {
       console.error('Error loading history:', response?.message || 'Unknown error');
       showError(response?.message || 'Failed to load URL history');
       
-      // Show empty state as fallback
+      // Show empty state as fallback with more descriptive information
+      emptyState.innerHTML = '<i class="fas fa-exclamation-circle"></i><p>Unable to load URL history. Please try again later.</p>';
       emptyState.classList.remove('hidden');
     }
   } catch (error) {
     console.error('Error loading history:', error);
     showError('Error connecting to authentication service');
     loading.classList.add('hidden');
+    
+    // Show empty state with connection error information
+    emptyState.innerHTML = '<i class="fas fa-wifi-slash"></i><p>Connection issue. Unable to load your URL history.</p>';
     emptyState.classList.remove('hidden');
   }
 }

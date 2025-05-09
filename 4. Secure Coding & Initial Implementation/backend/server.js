@@ -92,7 +92,18 @@ app.use("/api/v1/urls", urlRoutes);
 
 // Health check endpoint - make it highly available
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok", message: "API is running" });
+  // Set headers to prevent caching
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
+  // Return current timestamp to ensure response is always unique
+  res.status(200).json({ 
+    status: "ok", 
+    message: "API is running",
+    timestamp: new Date().toISOString() 
+  });
 });
 
 // Status endpoint for the extension - simplified for reliability

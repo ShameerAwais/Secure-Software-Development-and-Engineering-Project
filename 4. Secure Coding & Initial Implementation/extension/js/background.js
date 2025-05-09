@@ -482,7 +482,9 @@ function handleMessages(message, sender, sendResponse) {
 
   if (message.action === 'checkServerAvailability') {
     // Check if server is available by making a request to the health endpoint
-    fetch('http://localhost:5001/health')
+    // Add cache-busting query parameter to prevent 304 responses
+    const timestamp = new Date().getTime();
+    fetch(`http://localhost:5001/health?_=${timestamp}`)
       .then(response => {
         if (response.ok) {
           sendResponse({
@@ -564,50 +566,39 @@ function handleMessages(message, sender, sendResponse) {
           return;
         }
         
-        // First check if server is available
-        fetch('http://localhost:5001/health')
-          .then(response => {
-            if (!response.ok) {
-              throw new Error('Health check failed');
-            }
-            return true;
-          })
-          .catch(error => {
-            console.error('Server health check failed:', error);
-            // Server is unavailable, use fallback
-            sendResponse({
-              success: true,
-              fallback: true,
-              error: 'Server unavailable',
-              data: {
-                isSafe: basicCheckResult.isSafe,
-                threatType: basicCheckResult.isSafe ? null : 'Suspicious URL pattern',
-                details: {
-                  threatIndicators: basicCheckResult.indicators
-                }
+        // Check if server is available then proceed with API check
+        checkServerAndMakeApiRequest();
+        
+        // Function to handle server check and API request flow
+        function checkServerAndMakeApiRequest() {
+          const timestamp = new Date().getTime();
+          
+          // Step 1: Check server availability
+          fetch(`http://localhost:5001/health?_=${timestamp}`)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error('Health check failed');
               }
-            });
-            return false;
-          })
-          .then(serverAvailable => {
-            if (!serverAvailable) return;
-            
-            // Server is available, try the API
-            fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.checkUrl, {
-              method: 'POST',
-              headers: {
-                ...API_CONFIG.headers,
-                'Authorization': `Bearer ${result.token}`
-              },
-              body: JSON.stringify({
-                url: url,
-                domain: domain
-              }),
-              credentials: 'include'
+              return true;
+            })
+            .then(serverAvailable => {
+              // Step 2: Make API request since server is available
+              return fetch(API_CONFIG.baseUrl + API_CONFIG.endpoints.checkUrl, {
+                method: 'POST',
+                headers: {
+                  ...API_CONFIG.headers,
+                  'Authorization': `Bearer ${result.token}`
+                },
+                body: JSON.stringify({
+                  url: url,
+                  domain: domain
+                }),
+                credentials: 'include'
+              });
             })
             .then(response => {
+              // Step 3: Handle API response
               if (response.status === 404) {
-                // Endpoint does not exist
                 throw new Error('API endpoint not found');
               }
               if (!response.ok) {
@@ -616,8 +607,9 @@ function handleMessages(message, sender, sendResponse) {
               return response.json();
             })
             .then(data => {
+              // Step 4: Process API data
               if (data.success) {
-                // Check for the presence of Safe Browsing data in the response
+                // Check for Safe Browsing data
                 const safeBrowsingResult = data.data?.details?.safeBrowsing;
                 const isSafeBrowsingSource = data.data?.details?.source === "Google Safe Browsing API";
                 
@@ -650,6 +642,7 @@ function handleMessages(message, sender, sendResponse) {
                   confirmedPhishingUrls.add(domain);
                 }
               } else {
+                // API responded but indicated an error
                 sendResponse({
                   success: false,
                   error: data.message || 'Server returned an error',
@@ -665,9 +658,12 @@ function handleMessages(message, sender, sendResponse) {
               }
             })
             .catch(error => {
-              console.error('URL check API error:', error);
+              // Handle any errors in the promise chain
+              console.error('URL check error:', error);
+              
+              // Use fallback data for response
               sendResponse({
-                success: true, // Changed to true for fallback
+                success: true, // Using fallback, so consider it "successful" but with fallback data
                 error: `Error checking URL: ${error.message}`,
                 fallback: true,
                 data: {
@@ -679,7 +675,7 @@ function handleMessages(message, sender, sendResponse) {
                 }
               });
             });
-          });
+        }
       });
       
       return true; // Indicate async response
@@ -693,6 +689,121 @@ function handleMessages(message, sender, sendResponse) {
       });
       return true;
     }
+  }
+
+  if (message.action === 'getUserStats') {
+    // Get stored token
+    chrome.storage.local.get(['token'], (result) => {
+      if (!result.token) {
+        sendResponse({
+          success: false,
+          message: 'Not authenticated'
+        });
+        return;
+      }
+
+      const timeRange = message.timeRange || 'month';
+      const url = `${API_CONFIG.baseUrl}/urls/user-stats?range=${timeRange}`;
+      console.log('Fetching user stats from:', url);
+      
+      // Make stats request to backend
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          ...API_CONFIG.headers,
+          'Authorization': `Bearer ${result.token}`
+        },
+        credentials: 'include'
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          sendResponse({
+            success: true,
+            stats: data.data || {}
+          });
+        } else {
+          sendResponse({
+            success: false,
+            message: data.message || 'Failed to fetch statistics'
+          });
+        }
+      })
+      .catch(error => {
+        console.error('Stats fetch error:', error);
+        sendResponse({
+          success: false,
+          message: `Error fetching statistics: ${error.message}`
+        });
+      });
+    });
+    return true; // Indicate async response
+  }
+
+  if (message.action === 'getUserHistory') {
+    // Get stored token
+    chrome.storage.local.get(['token'], (result) => {
+      if (!result.token) {
+        sendResponse({
+          success: false,
+          message: 'Not authenticated'
+        });
+        return;
+      }
+
+      const page = message.page || 1;
+      const limit = message.limit || 10;
+      const timeRange = message.timeRange || 'month';
+      const url = `${API_CONFIG.baseUrl}/urls/user-history?page=${page}&limit=${limit}&range=${timeRange}`;
+      console.log('Fetching user history from:', url);
+      
+      // Make history request to backend
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          ...API_CONFIG.headers,
+          'Authorization': `Bearer ${result.token}`
+        },
+        credentials: 'include'
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          sendResponse({
+            success: true,
+            history: data.data || [],
+            pagination: data.pagination || {
+              page: 1,
+              pages: 1,
+              total: 0
+            }
+          });
+        } else {
+          sendResponse({
+            success: false,
+            message: data.message || 'Failed to fetch history'
+          });
+        }
+      })
+      .catch(error => {
+        console.error('History fetch error:', error);
+        sendResponse({
+          success: false,
+          message: `Error fetching history: ${error.message}`
+        });
+      });
+    });
+    return true; // Indicate async response
   }
 
   // Only process messages from content scripts with tab IDs
@@ -1119,44 +1230,65 @@ function updateBadgeForTab(tabId, status) {
  * @param {Object} data - Warning data
  */
 function showPhishingWarning(tabId, data) {
-  // Record that we've shown an alert for this tab
-  phishingAlerts[tabId] = true;
-  
-  // Create notification
-  chrome.notifications.create(`phishing-alert-${tabId}`, {
-    type: 'basic',
-    iconUrl: '../images/icon128.jpg',
-    title: 'Phishing Warning!',
-    message: `Suspicious site detected: ${data.domain}\nReason: ${data.reason}`,
-    priority: 2,
-    buttons: [
-      { title: 'Close Tab' },
-      { title: 'Ignore' }
-    ]
-  });
-  
-  // Handle notification button clicks
-  chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
-    if (notificationId === `phishing-alert-${tabId}`) {
-      if (buttonIndex === 0) {
-        // Close the tab
-        chrome.tabs.remove(tabId);
-      } else {
-        // Ignore - dismiss notification
-        chrome.notifications.clear(notificationId);
-      }
+  try {
+    // Record that we've shown an alert for this tab
+    phishingAlerts[tabId] = true;
+    
+    // Check if notifications API is available
+    if (chrome.notifications && typeof chrome.notifications.create === 'function') {
+      // Create notification
+      chrome.notifications.create(`phishing-alert-${tabId}`, {
+        type: 'basic',
+        iconUrl: '../images/icon128.jpg',
+        title: 'Phishing Warning!',
+        message: `Suspicious site detected: ${data.domain}\nReason: ${data.reason}`,
+        priority: 2,
+        buttons: [
+          { title: 'Close Tab' },
+          { title: 'Ignore' }
+        ]
+      }, notificationId => {
+        // Handle potential error in notification creation
+        if (chrome.runtime.lastError) {
+          console.warn('Notification creation error:', chrome.runtime.lastError);
+        }
+      });
+      
+      // Handle notification button clicks
+      chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+        if (notificationId === `phishing-alert-${tabId}`) {
+          if (buttonIndex === 0) {
+            // Close the tab
+            chrome.tabs.remove(tabId);
+          } else {
+            // Ignore - dismiss notification
+            chrome.notifications.clear(notificationId);
+          }
+        }
+      });
+    } else {
+      // Notification API not available, fallback to console warning
+      console.warn('Notifications API not available. Phishing site detected:', data.domain);
+      
+      // Update badge as a visual indicator
+      updateBadgeForTab(tabId, 'danger');
     }
-  });
-  
-  // Update popup with alert info
-  tabAnalysisData[tabId].alert = {
-    timestamp: Date.now(),
-    url: data.url,
-    domain: data.domain,
-    reason: data.reason,
-    details: data.details || [],
-    score: data.score || 0
-  };
+    
+    // Update popup with alert info (do this regardless of notification availability)
+    if (tabAnalysisData[tabId]) {
+      tabAnalysisData[tabId].alert = {
+        timestamp: Date.now(),
+        url: data.url,
+        domain: data.domain,
+        reason: data.reason,
+        details: data.details || [],
+        score: data.score || 0
+      };
+    }
+  } catch (error) {
+    // Catch any other errors to prevent the extension from crashing
+    console.error('Error showing phishing warning:', error);
+  }
 }
 
 /**
@@ -1279,14 +1411,61 @@ function performBasicUrlCheck(url, domain) {
     isSafe = false;
   }
   
-  // Check for common brands in domain
-  const commonBrands = ['paypal', 'apple', 'microsoft', 'amazon', 'google', 'facebook', 'netflix', 'instagram'];
+  // Enhanced brand impersonation check - more comprehensive list of brands
+  const commonBrands = [
+    'paypal', 'apple', 'microsoft', 'amazon', 'google', 'facebook', 'netflix', 
+    'instagram', 'xfinity', 'comcast', 'chase', 'bankofamerica', 'wellsfargo', 
+    'linkedin', 'twitter', 'gmail', 'outlook', 'yahoo', 'dropbox', 'icloud', 
+    'hotmail', 'office365', 'citibank', 'capitalone', 'amex', 'americanexpress',
+    'discord', 'spotify', 'walmart', 'target', 'usps', 'fedex', 'ups', 'dhl'
+  ];
+
+  // Check for brand name in subdomain (more aggressive pattern matching)
+  const domainParts = domain.split('.');
+  const isSubdomain = domainParts.length > 2;
+  const rootDomain = domainParts.slice(-2).join('.');
+  const subdomains = domainParts.slice(0, -2).join('.');
+  
+  // Check for brand impersonation in subdomain
+  if (isSubdomain && commonBrands.some(brand => 
+    subdomains.toLowerCase().includes(brand.toLowerCase()))) {
+    indicators.push('Subdomain contains major brand name (likely impersonation)');
+    isSafe = false;
+  }
+  
+  // Check for brand name but not as the main domain (original check)
   if (commonBrands.some(brand => {
-    // Check for brand name but not as the main domain
-    return domain.includes(brand) && !domain.endsWith(`.${brand}.com`);
+    return domain.toLowerCase().includes(brand.toLowerCase()) && 
+          !domain.toLowerCase().endsWith(`.${brand.toLowerCase()}.com`);
   })) {
     indicators.push('Domain contains common brand name (potential spoofing)');
     isSafe = false;
+  }
+  
+  // Check for suspicious numeric patterns in subdomains (common in phishing)
+  if (/[a-z]+\d{4,}/.test(subdomains)) {
+    indicators.push('Subdomain contains suspicious numeric sequence');
+    isSafe = false;
+  }
+  
+  // Check for free hosting services (common for phishing sites)
+  const freeHostingServices = [
+    'weebly.com', 'wix.com', 'blogspot.com', 'wordpress.com', 'site123.com',
+    'webnode.com', 'glitch.me', 'netlify.app', 'pages.dev', 'github.io',
+    'vercel.app', 'herokuapp.com', 'repl.co', '000webhostapp.com', 'webs.com',
+    'yolasite.com', 'strikingly.com', 'carrd.co', 'squarespace.com'
+  ];
+  
+  if (freeHostingServices.some(service => domain.toLowerCase().endsWith(service))) {
+    // If it's a free hosting service AND contains a brand name, it's very suspicious
+    if (commonBrands.some(brand => domain.toLowerCase().includes(brand.toLowerCase()))) {
+      indicators.push('Brand impersonation on free hosting platform (high risk)');
+      isSafe = false;
+    } else {
+      indicators.push('Site hosted on free website platform');
+      // Make it suspicious but not definitively unsafe
+      if (isSafe === true) isSafe = null;
+    }
   }
   
   // Default to neutral if no indicators but no positive signals
