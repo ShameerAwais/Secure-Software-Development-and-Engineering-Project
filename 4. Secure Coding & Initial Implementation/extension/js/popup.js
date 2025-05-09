@@ -122,6 +122,8 @@ async function checkCurrentPage() {
 
 // Function to handle scan result
 function handleScanResult(response) {
+  console.log("Full scan result:", response);
+  
   if (response && response.success) {
     // Handle successful scan
     const { isSafe, threatType, details } = response.data;
@@ -131,8 +133,29 @@ function handleScanResult(response) {
     // Check if there are phishing indicators even if isSafe flag is set
     const hasPhishingIndicators = indicators.length > 0;
     
+    // Check if the URL uses HTTP
+    const isHttp = currentUrl.startsWith('http:') && !currentUrl.startsWith('https:');
+    
+    console.log("Safety check:", { 
+      isSafe, 
+      hasPhishingIndicators, 
+      indicators, 
+      isHttp
+    });
+    
+    // Always mark HTTP as unsafe regardless of other checks
+    if (isHttp) {
+      indicators.push('Non-secure HTTP connection (not using HTTPS)');
+      updateStatus(
+        'unsafe', 
+        'Insecure connection detected', 
+        'This site uses HTTP instead of HTTPS, which means your connection is not encrypted. Any information you submit could be intercepted.'
+      );
+      return;
+    }
+    
+    // Truly safe only if explicitly marked safe AND no indicators AND using HTTPS
     if (isSafe === true && !hasPhishingIndicators) {
-      // Truly safe with no indicators
       updateStatus(
         'safe', 
         'Website appears to be safe', 
@@ -140,36 +163,33 @@ function handleScanResult(response) {
       );
     } else if (isSafe === null) {
       // Case where we couldn't definitively determine (neutral) or limited scan
-      // Check if there are indicators despite the null safety status
+      // Always show indicators if they exist
       if (hasPhishingIndicators) {
-        // If there are indicators, show warning
-        let detailMessage = `Some suspicious patterns detected:<br>`;
+        let detailMessage = `Suspicious patterns detected:<br>`;
         detailMessage += '<ul style="margin: 5px 0; padding-left: 15px;">';
         indicators.forEach(indicator => {
           detailMessage += `<li>${indicator}</li>`;
         });
         detailMessage += '</ul>';
         
-        // Add source if available
         if (source) {
           detailMessage += `<small>Source: ${source}</small>`;
         }
         
-        updateStatus('warning', 'Potential security concerns', detailMessage);
+        updateStatus('warning', 'Security concerns detected', detailMessage);
       } else {
         // No indicators, but couldn't fully determine
         updateStatus(
           'warning', 
-          'Limited scan only', 
+          'Limited security assessment', 
           source ? 
-            `Only local checks were performed. Full security scan unavailable.<br><small>Source: ${source}</small>` : 
-            'Only local checks were performed. Full security scan unavailable.'
+            `Only basic checks were performed. Full security scan unavailable.<br><small>Source: ${source}</small>` : 
+            'Only basic checks were performed. Full security scan unavailable.'
         );
       }
     } else {
-      // Unsafe site or has indicators despite isSafe flag
-      // Create detailed message for unsafe site
-      let detailMessage = threatType ? `Threat type: ${threatType}` : 'Suspicious website detected';
+      // Explicitly flagged as unsafe or has indicators
+      let detailMessage = threatType ? `Threat type: ${threatType}` : 'Security issues detected';
       
       // Add source information if available
       if (source) {
@@ -186,16 +206,13 @@ function handleScanResult(response) {
         detailMessage += '</ul>';
       }
       
-      // Brand impersonation is a high priority warning
-      const hasBrandImpersonation = indicators.some(ind => 
-        ind.toLowerCase().includes('brand') || 
-        ind.toLowerCase().includes('impersonation') ||
-        ind.toLowerCase().includes('spoofing'));
-      
-      if (hasBrandImpersonation) {
-        updateStatus('unsafe', 'Possible brand impersonation detected', detailMessage);
+      // Categorize threats for clearer warning messages
+      if (indicators.some(ind => ind.toLowerCase().includes('brand') || ind.toLowerCase().includes('impersonation') || ind.toLowerCase().includes('spoofing'))) {
+        updateStatus('unsafe', 'Potential brand impersonation detected', detailMessage);
+      } else if (indicators.some(ind => ind.toLowerCase().includes('http:'))) {
+        updateStatus('unsafe', 'Insecure connection detected', detailMessage);
       } else {
-        updateStatus('unsafe', 'Potential security threat detected', detailMessage);
+        updateStatus('unsafe', 'Security threat detected', detailMessage);
       }
     }
     
@@ -214,7 +231,18 @@ function handleScanResult(response) {
       
       // Check if the fallback response has threat indicators
       const indicators = response.data?.details?.threatIndicators || [];
-      if (indicators.length > 0) {
+      
+      // Check if the URL uses HTTP (even in fallback mode)
+      const isHttp = currentUrl.startsWith('http:') && !currentUrl.startsWith('https:');
+      
+      if (isHttp) {
+        // Always warn about HTTP
+        updateStatus(
+          'unsafe',
+          'Insecure connection detected',
+          'This site uses HTTP instead of HTTPS, which means your connection is not encrypted. Any information you submit could be intercepted.'
+        );
+      } else if (indicators.length > 0) {
         let detailMessage = `Local security scan found issues:${sourceText}`;
         detailMessage += '<ul style="margin: 5px 0; padding-left: 15px;">';
         indicators.forEach(indicator => {
@@ -231,14 +259,14 @@ function handleScanResult(response) {
         updateStatus(
           'warning', 
           'Limited scan only', 
-          `Security service unavailable. Only local checks were performed.${sourceText}<br><small>Error: ${response.error || 'Server connection failed'}</small>`
+          `Security service unavailable. Only basic checks were performed.${sourceText}<br><small>Error: ${response.error || 'Server connection failed'}</small>`
         );
       }
     } else if (response.requiresAuth) {
       updateStatus(
         'warning', 
         'Authentication Required', 
-        'Please log in to scan websites for security threats'
+        'Please log in to enable full website scanning'
       );
     } else {
       updateStatus(

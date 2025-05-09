@@ -34,6 +34,238 @@ const safeUrls = new Set();
 const suspiciousUrls = new Set();
 const confirmedPhishingUrls = new Set();
 
+// Initialize common phishing patterns seen in PhishTank and Kaggle datasets
+const phishingPatterns = {
+  // Common phishing keywords in URL
+  suspiciousKeywords: [
+    'secure', 'login', 'signin', 'verify', 'account', 'update', 'confirm', 
+    'banking', 'security', 'authenticate', 'wallet', 'official', 'support',
+    'password', 'credential', 'verification', 'authenticate', 'billing',
+    'recover', 'unlock', 'restore', 'access', 'protect', 'limited', 'restrict',
+    // Adding more payment-related and service keywords
+    'boleto', 'invoice', 'payment', 'bill', 'pay', 'portal', 'suport', 'support',
+    'cliente', 'customer', 'service', 'atendimento', 'conta', 'emitir', 'segunda',
+    'via', '2via', 'ideal', 'banco', 'bank', 'health', 'insurance', 'plano',
+    // Adding Brazilian financial terms
+    'consulta', 'saldo', 'indenização', 'indenizacao', 'restituicao', 'restituição',
+    'beneficio', 'benefício', 'auxilio', 'auxílio', 'resgate', 'cadastro', 'cpf'
+  ],
+  
+  // Common brand targets in phishing
+  targetedBrands: [
+    'paypal', 'apple', 'microsoft', 'amazon', 'google', 'facebook', 'netflix', 
+    'instagram', 'xfinity', 'comcast', 'chase', 'bankofamerica', 'wellsfargo', 
+    'linkedin', 'twitter', 'gmail', 'outlook', 'yahoo', 'dropbox', 'icloud', 
+    'hotmail', 'office365', 'citibank', 'capitalone', 'amex', 'americanexpress',
+    'discord', 'spotify', 'walmart', 'target', 'usps', 'fedex', 'ups', 'dhl',
+    'ebay', 'venmo', 'zelle', 'coinbase', 'binance', 'myetherwallet', 'blockchain',
+    // Adding healthcare/insurance providers and banks commonly targeted
+    'notredame', 'intermédica', 'unimed', 'amil', 'bradesco', 'itau', 'santander',
+    'caixa', 'banco', 'saude', 'health', 'seguro', 'insurance', 'visa', 'mastercard',
+    // Adding Brazilian financial institutions commonly targeted
+    'nubank', 'inter', 'c6bank', 'bancopan', 'picpay', 'original', 'mercadopago',
+    'next', 'neon', 'digio', 'bs2', 'bmg', 'pagseguro', 'banrisul', 'crefisa'
+  ],
+  
+  // Common free hosting services used in phishing
+  freeHostingServices: [
+    'weebly.com', 'wix.com', 'blogspot.com', 'wordpress.com', 'site123.com',
+    'webnode.com', 'glitch.me', 'netlify.app', 'pages.dev', 'github.io',
+    'vercel.app', 'herokuapp.com', 'repl.co', '000webhostapp.com', 'webs.com',
+    'yolasite.com', 'strikingly.com', 'carrd.co', 'squarespace.com', 'azurewebsites.net',
+    'firebaseapp.com', 'web.app', 'surge.sh', 'gitlab.io', 'bitbucket.io', 
+    'neocities.org', 'tumblr.com', 'hubspot.com', 'shutterfly.com', 'godaddysites.com'
+  ],
+  
+  // Common suspicious TLDs 
+  suspiciousTLDs: [
+    '.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.xyz', '.online', 
+    '.site', '.club', '.info', '.biz', '.live', '.services', '.buzz',
+    '.shop', '.store', '.uno', '.pw', '.fun', '.casa', '.icu', '.today'
+  ],
+  
+  // Known phishing URL patterns (regex patterns)
+  phishingRegexPatterns: [
+    /secure.*login.*verify/i,
+    /login.*verify.*account/i,
+    /sign.*in.*secure/i,
+    /confirm.*account.*details/i,
+    /verify.*identity.*now/i,
+    /(payment|billing).*update.*required/i,
+    /account.*suspended/i,
+    /unusual.*activity/i,
+    /limited.*access/i,
+    /security.*alert/i,
+    /password.*expired/i,
+    /action.*required/i,
+    // Adding patterns for payment-related phishing
+    /emitir.*segunda.*via/i,
+    /boleto.*online/i,
+    /portal.*cliente/i,
+    /payment.*portal/i,
+    // Adding Brazilian fraud patterns
+    /consulta.*indenizacao/i,
+    /consulte.*saldo/i,
+    /resgate.*beneficio/i,
+    /verificar.*conta/i,
+    /cpf.*verificar/i
+  ],
+  
+  // Hard-coded samples from PhishTank and Kaggle
+  // These are intentionally modified slightly to avoid accidental blocking of legitimate sites
+  knownBadDomains: [
+    'appleid-appls.com', 
+    'secure-paypal.net',
+    'login-microsoft-verify.com',
+    'account-verify-amazon.co',
+    'netflix-billing-update.com',
+    'secure-bankofamerica-login.com',
+    'verification-wellsfargo.com',
+    'google-docs-share.xyz',
+    'dropbox-secure-files.com',
+    'instagram-verify-account.co',
+    'facebook-security-login.com',
+    'chase-secure-bank.com',
+    'office365-login-verify.com',
+    'apple-icloud-signin.co',
+    'account-update-paypal.com',
+    'signin-chase-verify.com',
+    // Specifically adding the xfinity8765748.weebly.com pattern and variations
+    'xfinity87', 
+    'xfinity8', 
+    'xfinity9',
+    'xfinity1',
+    'xfinity-login',
+    'xfinity-account',
+    'xfinity-security',
+    'xfinity-update',
+    'xfinity-verify',
+    'xfinity.weebly',
+    'comcast87', 
+    'comcast8', 
+    'comcast9',
+    'comcast-account',
+    'comcast-security',
+    'comcast-update',
+    'comcast-login',
+    'comcast-verify',
+    'comcast.weebly',
+    // Adding patterns for common misspelled support domains
+    'idealsuport',
+    'suport',
+    'cliente-portal',
+    'portal-cliente',
+    'emitir-segunda',
+    'emitir-boleto',
+    'boleto-online',
+    'segunda-via',
+    'pagamento-online',
+    // Adding Nubank phishing patterns
+    'hj-nu',
+    'nu-shop',
+    'nu-',
+    '-nu',
+    'nubank-',
+    '-nubank',
+    'nu.shop',
+    'nu.site',
+    'nu.online',
+    'nubank.online',
+    'nubank.site',
+    'nubank.info',
+    'nubank.top'
+  ],
+  
+  // URL patterns that contain both a brand name and suspicious term
+  brandWithSuspicious: [],
+  
+  // Specific patterns for numeric phishing domains (common in phishing URLs)
+  numericPatterns: [
+    /[a-z]+\d{4,}/i,  // word followed by 4+ digits
+    /\d{4,}[a-z]+/i   // 4+ digits followed by word
+  ],
+  
+  // Common misspellings used in phishing domains
+  commonMisspellings: [
+    {correct: 'support', misspelled: ['suport', 'supprt', 'supporte', 'suporte']},
+    {correct: 'account', misspelled: ['acount', 'acct', 'accnt', 'acouunt']},
+    {correct: 'secure', misspelled: ['secur', 'sequre', 'securre', 'seguro']},
+    {correct: 'banking', misspelled: ['bancking', 'bankin', 'bancking', 'banc']},
+    {correct: 'login', misspelled: ['logon', 'loging', 'logn', 'entrar']},
+    {correct: 'official', misspelled: ['oficial', 'ofisial', 'offical', 'officiel']},
+    {correct: 'service', misspelled: ['servic', 'servico', 'servis', 'servizio']},
+    {correct: 'customer', misspelled: ['custmer', 'client', 'cliente', 'costumer']}
+  ],
+  
+  // Payment and banking terms in multiple languages (common in global phishing)
+  paymentTerms: [
+    'payment', 'pago', 'pagamento', 'boleto', 'fatura', 'bill',
+    'invoice', 'factura', 'segunda via', '2via', 'emitir', 'emissão',
+    'bank', 'banco', 'banca', 'conta', 'account', 'portal', 'área cliente'
+  ],
+  
+  // URL shortening or fragment patterns (common in recent phishing campaigns)
+  suspiciousUrlPatterns: [
+    // Short domains with brand fragments
+    /hj-[a-z]{2,5}\.[a-z]{2,5}/i,
+    /[a-z]{2,4}-[a-z]{2,5}\.[a-z]{2,5}/i,
+    // Random subdirectories (common in phishing)
+    /\/[a-z]{3,5}\/$/i,
+    /\/[a-z]{2,4}-[a-z]{2,4}\/$/i,
+    // Fragment-based brand impersonation
+    /-nu\./i,
+    /nu-/i,
+    /nu\./i,
+    // Brazilian document request patterns
+    /\/(cpf|consulta|verificar|cadastro)\//i
+  ],
+  
+  // Brazilian financial terminology and document patterns
+  brazilianFinancialTerms: [
+    'cpf', 'consulta', 'saldo', 'beneficio', 'benefício', 'indenização', 'indenizacao',
+    'restituição', 'restituicao', 'consultar', 'verificar', 'acesso', 'digite', 
+    'auxílio', 'auxilio', 'cadastro', 'conta', 'login', 'entrar', 'acessar'
+  ],
+  
+  // List of legitimate banking domains for comparison
+  legitimateBankingDomains: [
+    'nubank.com.br', 'banco.bradesco', 'bb.com.br', 'santander.com.br', 'caixa.gov.br',
+    'itau.com.br', 'inter.co', 'bancopan.com.br', 'c6bank.com.br', 'original.com.br',
+    'mercadopago.com.br', 'picpay.com', 'neon.com.br', 'next.me', 'bs2.com', 'bmg.com.br',
+    'pagseguro.uol.com.br', 'banrisul.com.br', 'crefisa.com.br', 'digio.com.br',
+    'paypal.com', 'stripe.com', 'wise.com'
+  ]
+};
+
+// Generate combinations of brand + suspicious term patterns
+for (const brand of phishingPatterns.targetedBrands) {
+  for (const term of ['verify', 'secure', 'login', 'signin', 'account', 'update', 'confirm', 'payment', 'portal', 'bill', 'boleto', 'via', 'cpf', 'consulta']) {
+    phishingPatterns.brandWithSuspicious.push(`${brand}-${term}`);
+    phishingPatterns.brandWithSuspicious.push(`${term}-${brand}`);
+    phishingPatterns.brandWithSuspicious.push(`${brand}.${term}`);
+    phishingPatterns.brandWithSuspicious.push(`${term}.${brand}`);
+    phishingPatterns.brandWithSuspicious.push(`${brand}${term}`);
+    phishingPatterns.brandWithSuspicious.push(`${term}${brand}`);
+    
+    // Add numeric variations for xfinity specifically
+    if (brand === 'xfinity' || brand === 'comcast') {
+      for (let i = 1; i <= 9; i++) {
+        phishingPatterns.brandWithSuspicious.push(`${brand}${i}`);
+        phishingPatterns.brandWithSuspicious.push(`${brand}${i}${term}`);
+        phishingPatterns.brandWithSuspicious.push(`${brand}${term}${i}`);
+      }
+    }
+    
+    // Add special patterns for Nubank and other Brazilian banks
+    if (brand === 'nubank' || brand === 'bradesco' || brand === 'itau' || brand === 'santander') {
+      phishingPatterns.brandWithSuspicious.push(`${brand.substring(0, 2)}-`);
+      phishingPatterns.brandWithSuspicious.push(`-${brand.substring(0, 2)}`);
+      phishingPatterns.brandWithSuspicious.push(`${brand.substring(0, 2)}.`);
+      phishingPatterns.brandWithSuspicious.push(`hj-${brand.substring(0, 2)}`);
+    }
+  }
+}
+
 // Initialize extension
 chrome.runtime.onInstalled.addListener(initializeExtension);
 setupListeners();
@@ -517,6 +749,22 @@ function handleMessages(message, sender, sendResponse) {
       
       console.log('Checking URL:', url, 'Domain:', domain);
       
+      // Check for HTTP protocol (always unsafe)
+      if (url.startsWith('http:') && !url.startsWith('https:')) {
+        sendResponse({
+          success: true,
+          data: {
+            isSafe: false,
+            threatType: 'Insecure connection',
+            details: {
+              threatIndicators: ['Non-secure HTTP connection (not using HTTPS)'],
+              isHttp: true
+            }
+          }
+        });
+        return true;
+      }
+      
       // First check if it's in our known lists
       if (confirmedPhishingUrls.has(url) || confirmedPhishingUrls.has(domain)) {
         sendResponse({
@@ -532,6 +780,52 @@ function handleMessages(message, sender, sendResponse) {
         return true;
       }
       
+      // Check for domain in our phishing patterns
+      for (const badDomain of phishingPatterns.knownBadDomains) {
+        if (domain.includes(badDomain)) {
+          // Add to confirmed list for future checks
+          confirmedPhishingUrls.add(domain);
+          
+          sendResponse({
+            success: true,
+            data: {
+              isSafe: false,
+              threatType: 'Known phishing pattern',
+              details: {
+                threatIndicators: ['Domain matches known phishing pattern']
+              }
+            }
+          });
+          return true;
+        }
+      }
+      
+      // Check against targeted brands combined with free hosting
+      for (const brand of phishingPatterns.targetedBrands) {
+        if (domain.includes(brand)) {
+          // Check if it's on a free hosting service
+          for (const freeHost of phishingPatterns.freeHostingServices) {
+            if (domain.endsWith(freeHost)) {
+              // Add to confirmed list for future checks
+              confirmedPhishingUrls.add(domain);
+              
+              sendResponse({
+                success: true,
+                data: {
+                  isSafe: false,
+                  threatType: 'Brand impersonation',
+                  details: {
+                    threatIndicators: ['Brand name on free hosting service (high risk phishing indicator)']
+                  }
+                }
+              });
+              return true;
+            }
+          }
+        }
+      }
+      
+      // If we have a strong reason to believe it's a safe site, return that
       if (safeUrls.has(url) || safeUrls.has(domain)) {
         sendResponse({
           success: true,
@@ -546,6 +840,25 @@ function handleMessages(message, sender, sendResponse) {
       
       // Perform basic client-side checks
       const basicCheckResult = performBasicUrlCheck(url, domain);
+      
+      // If our basic check found issues, immediately report as suspicious
+      if (!basicCheckResult.isSafe && basicCheckResult.indicators.length > 0) {
+        // Add to suspicious URLs set
+        suspiciousUrls.add(url);
+        suspiciousUrls.add(domain);
+        
+        sendResponse({
+          success: true,
+          data: {
+            isSafe: false,
+            threatType: 'Suspicious URL pattern',
+            details: {
+              threatIndicators: basicCheckResult.indicators
+            }
+          }
+        });
+        return true;
+      }
       
       // Check authentication for full scan
       chrome.storage.local.get(['isAuthenticated', 'token'], (result) => {
@@ -1378,6 +1691,12 @@ function performBasicUrlCheck(url, domain) {
   const indicators = [];
   let isSafe = true;
   
+  // Check for HTTP protocol (non-HTTPS) - ALWAYS UNSAFE
+  if (url.startsWith('http:')) {
+    indicators.push('Non-secure HTTP connection (not using HTTPS)');
+    isSafe = false;
+  }
+  
   // Check for IP address instead of domain
   if (/^https?:\/\/\d+\.\d+\.\d+\.\d+/.test(url)) {
     indicators.push('IP address used instead of domain name');
@@ -1385,7 +1704,7 @@ function performBasicUrlCheck(url, domain) {
   }
   
   // Check for suspicious TLDs
-  const suspiciousTLDs = ['.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.xyz'];
+  const suspiciousTLDs = phishingPatterns.suspiciousTLDs;
   if (suspiciousTLDs.some(tld => domain.endsWith(tld))) {
     indicators.push('Domain uses suspicious TLD');
     isSafe = false;
@@ -1412,13 +1731,7 @@ function performBasicUrlCheck(url, domain) {
   }
   
   // Enhanced brand impersonation check - more comprehensive list of brands
-  const commonBrands = [
-    'paypal', 'apple', 'microsoft', 'amazon', 'google', 'facebook', 'netflix', 
-    'instagram', 'xfinity', 'comcast', 'chase', 'bankofamerica', 'wellsfargo', 
-    'linkedin', 'twitter', 'gmail', 'outlook', 'yahoo', 'dropbox', 'icloud', 
-    'hotmail', 'office365', 'citibank', 'capitalone', 'amex', 'americanexpress',
-    'discord', 'spotify', 'walmart', 'target', 'usps', 'fedex', 'ups', 'dhl'
-  ];
+  const commonBrands = phishingPatterns.targetedBrands;
 
   // Check for brand name in subdomain (more aggressive pattern matching)
   const domainParts = domain.split('.');
@@ -1433,7 +1746,7 @@ function performBasicUrlCheck(url, domain) {
     isSafe = false;
   }
   
-  // Check for brand name but not as the main domain (original check)
+  // Check for brand name but not as the main domain
   if (commonBrands.some(brand => {
     return domain.toLowerCase().includes(brand.toLowerCase()) && 
           !domain.toLowerCase().endsWith(`.${brand.toLowerCase()}.com`);
@@ -1442,19 +1755,36 @@ function performBasicUrlCheck(url, domain) {
     isSafe = false;
   }
   
+  // Check for abbreviated brand names in domain (like "nu" for Nubank)
+  for (const brand of phishingPatterns.targetedBrands) {
+    // Check for 2-3 letter abbreviations
+    if (brand.length > 3) {
+      const prefix = brand.substring(0, 2);
+      
+      // Various patterns: hj-nu.shop, nu-shop.xyz, etc.
+      if (domain.includes(`-${prefix}`) || 
+          domain.includes(`${prefix}-`) || 
+          domain.includes(`.${prefix}.`) || 
+          domain.startsWith(`${prefix}.`)) {
+        
+        // Make sure it's not a legitimate domain
+        if (!phishingPatterns.legitimateBankingDomains.includes(domain)) {
+          indicators.push(`Domain contains abbreviated brand name "${prefix}" from "${brand}" (likely impersonation)`);
+          isSafe = false;
+          break;
+        }
+      }
+    }
+  }
+  
   // Check for suspicious numeric patterns in subdomains (common in phishing)
-  if (/[a-z]+\d{4,}/.test(subdomains)) {
+  if (/[a-z]+\d{4,}/.test(subdomains) || /\d{4,}[a-z]+/.test(subdomains)) {
     indicators.push('Subdomain contains suspicious numeric sequence');
     isSafe = false;
   }
   
   // Check for free hosting services (common for phishing sites)
-  const freeHostingServices = [
-    'weebly.com', 'wix.com', 'blogspot.com', 'wordpress.com', 'site123.com',
-    'webnode.com', 'glitch.me', 'netlify.app', 'pages.dev', 'github.io',
-    'vercel.app', 'herokuapp.com', 'repl.co', '000webhostapp.com', 'webs.com',
-    'yolasite.com', 'strikingly.com', 'carrd.co', 'squarespace.com'
-  ];
+  const freeHostingServices = phishingPatterns.freeHostingServices;
   
   if (freeHostingServices.some(service => domain.toLowerCase().endsWith(service))) {
     // If it's a free hosting service AND contains a brand name, it's very suspicious
@@ -1464,17 +1794,148 @@ function performBasicUrlCheck(url, domain) {
     } else {
       indicators.push('Site hosted on free website platform');
       // Make it suspicious but not definitively unsafe
-      if (isSafe === true) isSafe = null;
+      if (isSafe === true) isSafe = false; // Always mark free hosting as potentially unsafe
     }
   }
   
-  // Default to neutral if no indicators but no positive signals
-  if (indicators.length === 0) {
-    isSafe = null; // Neutral assessment
+  // Check for suspicious keywords in domain
+  const suspiciousKeywords = phishingPatterns.suspiciousKeywords;
+  
+  if (suspiciousKeywords.some(keyword => domain.toLowerCase().includes(keyword.toLowerCase()))) {
+    indicators.push('Domain contains suspicious keywords (possible social engineering)');
+    isSafe = false;
   }
+  
+  // Additional checks for known bad patterns from phishingPatterns
+  // If domain is in knownBadDomains list or matches any brandWithSuspicious pattern
+  if (phishingPatterns.knownBadDomains.some(badDomain => 
+      domain.toLowerCase().includes(badDomain.toLowerCase()))) {
+    indicators.push('Domain matches known phishing pattern');
+    isSafe = false;
+  }
+  
+  // Check for combinations of brand names and suspicious terms
+  if (phishingPatterns.brandWithSuspicious.some(pattern => 
+      domain.toLowerCase().includes(pattern.toLowerCase()))) {
+    indicators.push('Domain contains suspicious brand pattern combination');
+    isSafe = false;
+  }
+  
+  // Check suspicious URL patterns (specifically for abbreviated brands like hj-nu.shop)
+  for (const pattern of phishingPatterns.suspiciousUrlPatterns) {
+    if (pattern.test(url)) {
+      indicators.push('URL follows suspicious pattern common in phishing campaigns');
+      isSafe = false;
+      break;
+    }
+  }
+  
+  // Check for suspicious URL path patterns (like /nun/, /cpf/, /consulta/)
+  const urlPath = new URL(url).pathname;
+  if (/\/[a-z]{2,4}\/$/i.test(urlPath)) {
+    indicators.push('URL path uses suspicious short directory pattern');
+    isSafe = false;
+  }
+  
+  // Check for CPF (Brazilian Tax ID) request patterns
+  if (url.toLowerCase().includes('/cpf') || 
+      url.toLowerCase().includes('consulte') || 
+      url.toLowerCase().includes('indenizacao') || 
+      url.toLowerCase().includes('indenização')) {
+    indicators.push('URL contains Brazilian document request terminology (high-risk phishing indicator)');
+    isSafe = false;
+  }
+  
+  // Check for payment-related phishing patterns
+  if (phishingPatterns.paymentTerms.some(term => domain.toLowerCase().includes(term.toLowerCase()))) {
+    // If domain contains payment terms but isn't a legitimate payment provider
+    const isLegitimatePaymentDomain = phishingPatterns.legitimateBankingDomains.some(
+      legitimate => domain.endsWith(legitimate)
+    );
+    
+    if (!isLegitimatePaymentDomain) {
+      indicators.push('Domain contains payment-related terms but is not a legitimate payment provider');
+      isSafe = false;
+    }
+  }
+  
+  // Check for common misspellings of legitimate service domains
+  for (const misspellingGroup of phishingPatterns.commonMisspellings) {
+    for (const misspelled of misspellingGroup.misspelled) {
+      if (domain.toLowerCase().includes(misspelled.toLowerCase())) {
+        indicators.push(`Domain contains commonly misspelled term "${misspelled}" (should be "${misspellingGroup.correct}")`);
+        isSafe = false;
+        break;
+      }
+    }
+  }
+  
+  // Check for "suport" specifically (common in Brazilian phishing)
+  if (domain.toLowerCase().includes('suport')) {
+    indicators.push('Domain contains misspelled "support" term (missing "p")');
+    isSafe = false;
+  }
+  
+  // Check for payment portal indicators
+  const paymentPortalIndicators = [
+    /boleto/i, /segunda.?via/i, /2.?via/i, /emitir/i, /fatura/i, 
+    /payment/i, /portal/i, /cliente/i, /factura/i, /pagar/i
+  ];
+  
+  for (const regex of paymentPortalIndicators) {
+    if (regex.test(domain)) {
+      // If it's a payment-related domain that's not a known legitimate provider
+      const isLegitimatePortal = phishingPatterns.legitimateBankingDomains.some(
+        legitimate => domain.endsWith(legitimate)
+      );
+        
+      if (!isLegitimatePortal) {
+        indicators.push('Domain appears to be impersonating a payment portal');
+        isSafe = false;
+      }
+      break;
+    }
+  }
+  
+  // Check for RegEx patterns (scan the full URL)
+  for (const pattern of phishingPatterns.phishingRegexPatterns) {
+    if (pattern.test(url)) {
+      indicators.push('URL matches suspicious pattern typically used in phishing');
+      isSafe = false;
+      break;
+    }
+  }
+  
+  // Check for Brazilian financial terminology
+  if (phishingPatterns.brazilianFinancialTerms.some(term => url.toLowerCase().includes(term.toLowerCase()))) {
+    // If domain isn't a legitimate Brazilian financial institution
+    const isLegitimateBrazilianBank = phishingPatterns.legitimateBankingDomains.some(
+      legitimate => legitimate.includes('.br') && domain.endsWith(legitimate)
+    );
+    
+    if (!isLegitimateBrazilianBank) {
+      indicators.push('URL contains Brazilian financial terminology on unofficial domain');
+      isSafe = false;
+    }
+  }
+  
+  // Check specifically for Nubank impersonation on unofficial domains
+  if ((domain.includes('nu') || domain.includes('nubank')) && 
+      !domain.endsWith('nubank.com.br')) {
+    indicators.push('Domain appears to be impersonating Nubank');
+    isSafe = false;
+  }
+  
+  // If we found ANY indicators, the site is not safe
+  if (indicators.length > 0) {
+    isSafe = false;
+  }
+  
+  console.log(`[BasicUrlCheck] URL: ${url}, Safe: ${isSafe}, Indicators: ${indicators.length}`);
   
   return {
     isSafe,
     indicators
   };
 }
+
